@@ -121,20 +121,18 @@
       text-decoration: line-through;
       cursor: default;
     }
-    /* Ocupado en la primera mitad (reserva termina a los :30) — rojo izq, blanco der */
+    /* Ocupado en la primera mitad — rojo izq, blanco der, sin tachado en texto */
     .slot-chip.slot-half-start {
       background: linear-gradient(90deg, #fde8ec 50%, white 50%);
-      color: #c0392b;
+      color: var(--text);
       border-color: #f5b7b1;
-      text-decoration: line-through;
       cursor: default;
     }
-    /* Ocupado en la segunda mitad (reserva empieza a los :30) — blanco izq, rojo der */
+    /* Ocupado en la segunda mitad — blanco izq, rojo der, sin tachado en texto */
     .slot-chip.slot-half-end {
       background: linear-gradient(90deg, white 50%, #fde8ec 50%);
-      color: #c0392b;
+      color: var(--text);
       border-color: #f5b7b1;
-      text-decoration: line-through;
       cursor: default;
     }
 
