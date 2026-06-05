@@ -3,16 +3,73 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chilecito Deportes — Reservá tu cancha</title>
+  <title>Cancha Libre — Reservá tu deporte en La Rioja</title>
   <link rel="stylesheet" href="/css/main.css">
+  <style>
+    /* ── LOCALIDADES ─────────────────────────────────── */
+    .loc-bar {
+      background: rgba(255,255,255,0.06);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding: 10px 0;
+    }
+    .loc-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 0 24px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .loc-scroll::-webkit-scrollbar { display: none; }
+    .loc-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 14px;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      border: 1.5px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.65);
+      background: transparent;
+      transition: all 0.18s;
+      user-select: none;
+    }
+    .loc-pill:hover { border-color: rgba(255,255,255,0.5); color: white; }
+    .loc-pill.active { background: var(--accent2); border-color: var(--accent2); color: white; font-weight: 700; }
+    .loc-pill.available .dot { width:6px; height:6px; border-radius:50%; background:var(--accent2); flex-shrink:0; }
+    .loc-pill.pronto { opacity: 0.4; cursor: default; }
+    .loc-pill.pronto:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.65); }
+
+    /* ── SEARCH ROW ──────────────────────────────────── */
+    .search-row {
+      display: flex; gap: 10px; align-items: center;
+      justify-content: center; flex-wrap: wrap;
+      max-width: 600px; margin: 0 auto;
+    }
+    .search-row input, .search-row select {
+      padding: 12px 16px; border-radius: 10px; border: none;
+      font-size: 0.95rem; background: white; color: var(--text); outline: none; font-weight: 500;
+    }
+    .search-row input[type="date"] { min-width: 160px; }
+    .search-row select { min-width: 130px; }
+    .search-row .btn-search {
+      padding: 12px 28px; background: var(--accent); color: white; border: none;
+      border-radius: 10px; font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      transition: all 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap;
+    }
+    .search-row .btn-search:hover { background: #d63651; transform: translateY(-1px); }
+  </style>
 </head>
 <body>
 
 <nav>
   <div class="nav-brand">
     <div class="dot"></div>
-    Chilecito
-    <span style="color:var(--accent2);font-weight:900">Deportes</span>
+    Cancha<span style="color:var(--accent2);font-weight:900">Libre</span>
   </div>
   <div class="nav-links">
     <a href="/">Inicio</a>
@@ -20,30 +77,32 @@
   </div>
 </nav>
 
-<!-- HERO + BUSCADOR -->
+<!-- HERO -->
 <div class="hero">
   <div class="hero-content">
-    <div class="hero-eyebrow">⚡ Chilecito, La Rioja</div>
-    <h1>Encontrá tu <span>cancha</span> disponible</h1>
-    <p>Pádel, fútbol, hockey, vóley — buscá por horario y reservá al instante</p>
+    <div class="hero-eyebrow">⚡ La Rioja, Argentina</div>
+    <h1>Encontrá tu cancha <span>disponible</span></h1>
 
-    <div class="sports-grid" id="sportsGrid">
-      <!-- generado por JS -->
+    <!-- LOCALIDADES -->
+    <div class="loc-bar" style="margin: 20px -24px 24px;border-radius:0">
+      <div class="loc-scroll" id="locPills"></div>
     </div>
 
-    <div class="search-row" id="searchRow" style="display:none">
+    <!-- DEPORTES -->
+    <div class="sports-grid" id="sportsGrid">
+      <div style="color:rgba(255,255,255,0.5);font-size:0.9rem">Cargando deportes...</div>
+    </div>
+
+    <!-- FECHA / HORA -->
+    <div class="search-row" id="searchRow" style="display:none;margin-top:20px">
       <input type="date" id="searchDate">
-      <select id="searchTime">
-        <!-- generado por JS -->
-      </select>
+      <select id="searchTime"></select>
       <select id="searchDuration">
         <option value="60">1 hora</option>
         <option value="90">1h 30min</option>
         <option value="120">2 horas</option>
       </select>
-      <button class="btn-search" onclick="doSearch()">
-        🔍 Buscar canchas
-      </button>
+      <button class="btn-search" onclick="doSearch()">🔍 Buscar</button>
     </div>
   </div>
 </div>
@@ -53,41 +112,81 @@
   <div id="resultsContent"></div>
 </div>
 
-<!-- LANDING cuando no buscaron nada -->
-<div class="container" id="landingSection">
-  <div style="text-align:center;padding:16px 0 8px">
-    <p style="color:var(--text-muted);font-size:0.95rem">Seleccioná un deporte para empezar</p>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script>
-const SPORTS = [
-  { key: 'padel',    label: 'Pádel',      icon: '🎾' },
-  { key: 'futbol5',  label: 'Fútbol 5',   icon: '⚽' },
-  { key: 'futbol7',  label: 'Fútbol 7',   icon: '⚽' },
-  { key: 'futbol11', label: 'Fútbol 11',  icon: '🏟️' },
-  { key: 'hockey',   label: 'Hockey',     icon: '🏑' },
-  { key: 'voley',    label: 'Vóley',      icon: '🏐' },
+const LOCALIDADES = [
+  { name: 'Chilecito',              available: true  },
+  { name: 'La Rioja',               available: false },
+  { name: 'Aimogasta',              available: false },
+  { name: 'Chamical',               available: false },
+  { name: 'Chepes',                 available: false },
+  { name: 'Famatina',               available: false },
+  { name: 'Nonogasta',              available: false },
+  { name: 'Patquía',                available: false },
+  { name: 'Villa Unión',            available: false },
+  { name: 'Vinchina',               available: false },
+  { name: 'Villa Castelli',         available: false },
+  { name: 'San Blas de los Sauces', available: false },
+  { name: 'Olta',                   available: false },
 ];
 
-const SPORT_LABELS = Object.fromEntries(SPORTS.map(s => [s.key, s]));
 let selectedSport = null;
+let selectedCity  = 'Chilecito';
+let sportsData    = [];
 
 // ── Init ──────────────────────────────────────────────────────
-function init() {
-  buildSports();
+async function init() {
+  buildLocalidades();
   buildTimeSelect();
-  // Fecha de hoy por default
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('searchDate').value = today;
-  document.getElementById('searchDate').min = today;
+  document.getElementById('searchDate').min   = today;
+  await loadSports();
+}
+
+function buildLocalidades() {
+  const el = document.getElementById('locPills');
+
+  // Pill "Toda La Rioja"
+  el.appendChild(makePill('', 'Toda La Rioja', false, false));
+
+  for (const loc of LOCALIDADES) {
+    el.appendChild(makePill(loc.name, loc.name, loc.available, !loc.available));
+  }
+
+  // Activar Chilecito por default
+  selectCity('Chilecito');
+}
+
+function makePill(value, label, available, pronto) {
+  const btn = document.createElement('button');
+  btn.className = `loc-pill${available ? ' available' : ''}${pronto ? ' pronto' : ''}`;
+  btn.dataset.city = value;
+  if (available) btn.innerHTML = `<span class="dot"></span>${label}`;
+  else if (pronto) btn.innerHTML = `${label} <span style="font-size:0.7rem;opacity:0.7">pronto</span>`;
+  else btn.innerHTML = label;
+  if (!pronto) btn.onclick = () => selectCity(value);
+  return btn;
+}
+
+function selectCity(city) {
+  selectedCity = city;
+  document.querySelectorAll('.loc-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.city === city);
+  });
+}
+
+async function loadSports() {
+  const res = await fetch('/api/sports');
+  sportsData = await res.json();
+  buildSports();
 }
 
 function buildSports() {
   const grid = document.getElementById('sportsGrid');
-  grid.innerHTML = SPORTS.map(s => `
+  if (!sportsData.length) { grid.innerHTML = '<div style="color:rgba(255,255,255,0.5)">Sin deportes configurados</div>'; return; }
+  grid.innerHTML = sportsData.map(s => `
     <button class="sport-btn" data-sport="${s.key}" onclick="selectSport('${s.key}')">
       <span class="sport-icon">${s.icon}</span>
       <span class="sport-label">${s.label}</span>
@@ -97,14 +196,12 @@ function buildSports() {
 
 function buildTimeSelect() {
   const sel = document.getElementById('searchTime');
-  const now = new Date();
-  const curH = now.getHours();
-  for (let h = 7; h <= 23; h++) {
+  const curH = new Date().getHours();
+  for (let h = 6; h <= 23; h++) {
     for (const m of [0, 30]) {
       const label = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
       const opt = document.createElement('option');
-      opt.value = label;
-      opt.textContent = label;
+      opt.value = label; opt.textContent = label;
       if (h === curH && m === 0) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -115,27 +212,27 @@ function selectSport(sport) {
   selectedSport = sport;
   document.querySelectorAll('.sport-btn').forEach(b => b.classList.toggle('active', b.dataset.sport === sport));
   document.getElementById('searchRow').style.display = 'flex';
-  document.getElementById('landingSection').style.display = 'none';
 }
 
 // ── Búsqueda ──────────────────────────────────────────────────
 async function doSearch() {
   if (!selectedSport) { showToast('Seleccioná un deporte primero', 'error'); return; }
-  const date = document.getElementById('searchDate').value;
+  const date       = document.getElementById('searchDate').value;
   const start_time = document.getElementById('searchTime').value;
-  const duration = document.getElementById('searchDuration').value;
+  const duration   = document.getElementById('searchDuration').value;
   if (!date) { showToast('Seleccioná una fecha', 'error'); return; }
 
-  const res = await fetch(`/api/search?sport=${selectedSport}&date=${date}&start_time=${start_time}&duration=${duration}`);
+  const cityParam = selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : '';
+  const res  = await fetch(`/api/search?sport=${selectedSport}&date=${date}&start_time=${start_time}&duration=${duration}${cityParam}`);
   const data = await res.json();
-  renderResults(data, start_time, date);
+  renderResults(data, start_time);
   document.getElementById('resultsSection').style.display = 'block';
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function renderResults(data, start_time, date) {
-  const sport = SPORT_LABELS[selectedSport];
-  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+function renderResults(data, start_time) {
+  const sport = sportsData.find(s => s.key === selectedSport) || { label: selectedSport, icon: '🏟️' };
+  const dateLabel = new Date(data.search.date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   const el = document.getElementById('resultsContent');
 
   let html = `
@@ -146,38 +243,27 @@ function renderResults(data, start_time, date) {
   `;
 
   if (data.available.length) {
-    html += `
-      <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px">
-        ${data.available.length} cancha${data.available.length !== 1 ? 's' : ''} disponible${data.available.length !== 1 ? 's' : ''} en ese horario
-      </p>
-      <div class="courts-grid">
-        ${data.available.map(c => courtCard(c, start_time, data.search.end_time)).join('')}
-      </div>
-    `;
+    html += `<p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px">${data.available.length} cancha${data.available.length !== 1 ? 's' : ''} disponible${data.available.length !== 1 ? 's' : ''}</p>
+    <div class="courts-grid">${data.available.map(c => courtCard(c, start_time, data.search.end_time)).join('')}</div>`;
   } else {
-    html += `
-      <div class="empty-state" style="padding:40px 0">
-        <div class="icon">😔</div>
-        <h3>No hay canchas disponibles a las ${start_time}</h3>
-        <p>Probá con otro horario o día</p>
-      </div>
-    `;
+    html += `<div class="empty-state" style="padding:40px 0">
+      <div class="icon">😔</div>
+      <h3>No hay canchas disponibles a las ${start_time}</h3>
+      <p>Probá con otro horario o día</p>
+    </div>`;
 
     if (data.suggestions.length) {
-      html += `
-        <div class="suggestions-box">
-          <h3>⏰ Horarios cercanos disponibles</h3>
-          <p>Encontramos canchas libres en estos horarios alternativos</p>
-          <div class="suggestion-slots">
-            ${data.suggestions.map(s => `
-              <div class="suggestion-slot" onclick="jumpToTime('${s.time}')">
-                <div class="slot-time">${s.time}</div>
-                <div class="slot-count">${s.courts.length} cancha${s.courts.length !== 1 ? 's' : ''}</div>
-              </div>
-            `).join('')}
-          </div>
+      html += `<div class="suggestions-box">
+        <h3>⏰ Horarios cercanos disponibles</h3>
+        <p>Encontramos canchas libres en estos horarios</p>
+        <div class="suggestion-slots">
+          ${data.suggestions.map(s => `
+            <div class="suggestion-slot" onclick="jumpToTime('${s.time}')">
+              <div class="slot-time">${s.time}</div>
+              <div class="slot-count">${s.count} cancha${s.count !== 1 ? 's' : ''}</div>
+            </div>`).join('')}
         </div>
-      `;
+      </div>`;
     }
   }
 
@@ -185,43 +271,32 @@ function renderResults(data, start_time, date) {
 }
 
 function courtCard(c, start_time, end_time) {
+  const SURFACES = { sintetico:'🌿 Sintético', acrilico:'🔵 Acrílico', cemento:'⬜ Cemento', parquet:'🪵 Parquet', tierra:'🟤 Tierra' };
+  const WALLS    = { vidrio:'🪟 Vidrio', solido:'🧱 Sólida', mixto:'🔄 Mixta' };
   const tags = [];
-  if (c.surface) tags.push(surfaceLabel(c.surface));
-  if (c.covered) tags.push({ text: '🏠 Techada', cls: 'highlight' });
-  else tags.push({ text: '☀️ Al aire libre', cls: '' });
-  if (c.wall_material && c.sport === 'padel') tags.push({ text: paredLabel(c.wall_material), cls: '' });
+  if (c.surface) tags.push({ text: SURFACES[c.surface] || c.surface, cls: '' });
+  tags.push(c.covered ? { text: '🏠 Techada', cls: 'highlight' } : { text: '☀️ Al aire libre', cls: '' });
+  if (c.wall_material && c.sport === 'padel') tags.push({ text: WALLS[c.wall_material] || c.wall_material, cls: '' });
 
-  const wa = c.venue_whatsapp ? `https://wa.me/${c.venue_whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Hola! Quiero reservar ${c.name} el ${start_time} hs`)}` : null;
+  const wa = c.venue_whatsapp
+    ? `https://wa.me/${c.venue_whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Hola! Quiero reservar ${c.name} el ${start_time} hs`)}`
+    : null;
+  const sport = sportsData.find(s => s.key === c.sport);
 
-  return `
-    <div class="court-card">
-      ${c.images?.[0]
-        ? `<img class="court-img" src="/uploads/${c.images[0].path}" alt="${c.name}">`
-        : `<div class="court-no-img">${SPORT_LABELS[c.sport]?.icon || '🏟️'}</div>`}
-      <div class="court-body">
-        <div class="court-venue">${c.venue_name}</div>
-        <h3>${c.name}</h3>
-        <div class="court-tags">
-          ${tags.map(t => `<span class="court-tag ${t.cls || ''}">${t.text}</span>`).join('')}
-        </div>
-        ${c.description ? `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">${c.description}</p>` : ''}
-        ${c.price_per_hour ? `<div class="court-price">$${Number(c.price_per_hour).toLocaleString('es-AR')}<span>/hora</span></div>` : ''}
-        <div class="court-footer">
-          ${wa ? `<a class="btn-wa" href="${wa}" target="_blank">💬 Reservar</a>` : ''}
-          <a class="btn-info" href="/complejo/${c.venue_slug}">Ver complejo</a>
-        </div>
+  return `<div class="court-card">
+    ${c.images?.[0] ? `<img class="court-img" src="/uploads/${c.images[0].path}" alt="${c.name}">` : `<div class="court-no-img">${sport?.icon || '🏟️'}</div>`}
+    <div class="court-body">
+      <div class="court-venue">${c.venue_name}${c.venue_city ? ` · ${c.venue_city}` : ''}</div>
+      <h3>${c.name}</h3>
+      <div class="court-tags">${tags.map(t => `<span class="court-tag ${t.cls||''}">${t.text}</span>`).join('')}</div>
+      ${c.description ? `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">${c.description}</p>` : ''}
+      ${c.price_per_hour ? `<div class="court-price">$${Number(c.price_per_hour).toLocaleString('es-AR')}<span>/hora</span></div>` : ''}
+      <div class="court-footer">
+        ${wa ? `<a class="btn-wa" href="${wa}" target="_blank">💬 Reservar</a>` : ''}
+        <a class="btn-info" href="/complejo/${c.venue_slug}">Ver complejo</a>
       </div>
     </div>
-  `;
-}
-
-function surfaceLabel(s) {
-  const map = { sintetico: '🌿 Pasto sintético', acrilico: '🔵 Acrílico', cemento: '⬜ Cemento', parquet: '🪵 Parquet', tierra: '🟤 Tierra' };
-  return { text: map[s] || s, cls: '' };
-}
-function paredLabel(s) {
-  const map = { vidrio: '🪟 Pared de vidrio', solido: '🧱 Pared sólida', mixto: '🔄 Pared mixta' };
-  return map[s] || s;
+  </div>`;
 }
 
 function jumpToTime(time) {
@@ -231,8 +306,7 @@ function jumpToTime(time) {
 
 function showToast(msg, type = '') {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = `toast ${type} show`;
+  t.textContent = msg; t.className = `toast ${type} show`;
   setTimeout(() => t.className = 'toast', 2800);
 }
 
