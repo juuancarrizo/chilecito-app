@@ -204,7 +204,7 @@ nav {
   font-weight: 700;
   transition: all 0.2s;
 }
-.court-card .court-footer .btn-wa { background: #25D366; color: white; }
+.court-card .court-footer .btn-wa { background: #25D366; color: white; border: none; cursor: pointer; outline: none; }
 .court-card .court-footer .btn-wa:hover { background: #1da851; }
 .court-card .court-footer .btn-info { background: var(--bg); color: var(--primary); border: 1.5px solid var(--border); }
 .court-card .court-footer .btn-info:hover { border-color: var(--primary); }
