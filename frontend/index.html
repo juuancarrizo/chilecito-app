@@ -6,43 +6,46 @@
   <title>Cancha Libre — Reservá tu deporte en La Rioja</title>
   <link rel="stylesheet" href="/css/main.css">
   <style>
-    /* ── LOCALIDADES ─────────────────────────────────── */
-    .loc-bar {
-      background: rgba(255,255,255,0.06);
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      padding: 10px 0;
-    }
-    .loc-scroll {
+    /* ── LOCALIDADES CUADROS ─────────────────────────── */
+    .loc-cards {
       display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      scrollbar-width: none;
-      padding: 0 24px;
-      max-width: 860px;
-      margin: 0 auto;
+      gap: 12px;
+      justify-content: center;
+      margin: 22px 0 26px;
+      flex-wrap: wrap;
     }
-    .loc-scroll::-webkit-scrollbar { display: none; }
-    .loc-pill {
+    .loc-card {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 5px;
-      padding: 5px 14px;
-      border-radius: 100px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      white-space: nowrap;
+      justify-content: center;
+      gap: 4px;
+      width: 130px;
+      padding: 14px 12px;
+      border-radius: 14px;
+      border: 2px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.07);
+      color: white;
       cursor: pointer;
-      border: 1.5px solid rgba(255,255,255,0.2);
-      color: rgba(255,255,255,0.65);
-      background: transparent;
-      transition: all 0.18s;
+      transition: all 0.2s;
       user-select: none;
+      backdrop-filter: blur(4px);
     }
-    .loc-pill:hover { border-color: rgba(255,255,255,0.5); color: white; }
-    .loc-pill.active { background: var(--accent2); border-color: var(--accent2); color: white; font-weight: 700; }
-    .loc-pill.available .dot { width:6px; height:6px; border-radius:50%; background:var(--accent2); flex-shrink:0; }
-    .loc-pill.pronto { opacity: 0.4; cursor: default; }
-    .loc-pill.pronto:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.65); }
+    .loc-card:hover { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.14); }
+    .loc-card.active {
+      border-color: var(--accent2);
+      background: rgba(245,166,35,0.2);
+      box-shadow: 0 4px 20px rgba(245,166,35,0.25);
+    }
+    .loc-card.pronto {
+      opacity: 0.45;
+      cursor: default;
+      border-style: dashed;
+    }
+    .loc-card.pronto:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.07); }
+    .loc-card .loc-icon { font-size: 1.5rem; }
+    .loc-card .loc-name { font-size: 0.82rem; font-weight: 800; letter-spacing: 0.2px; }
+    .loc-card .loc-sub { font-size: 0.68rem; opacity: 0.7; font-weight: 500; }
 
     /* ── SEARCH ROW ──────────────────────────────────── */
     .search-row {
@@ -122,8 +125,17 @@
     <h1>Encontrá tu cancha <span>disponible</span></h1>
 
     <!-- LOCALIDADES -->
-    <div class="loc-bar" style="margin: 20px -24px 24px;border-radius:0">
-      <div class="loc-scroll" id="locPills"></div>
+    <div class="loc-cards">
+      <div class="loc-card active" id="loc-chilecito" onclick="selectCity('Chilecito', this)">
+        <div class="loc-icon">📍</div>
+        <div class="loc-name">Chilecito</div>
+        <div class="loc-sub">Disponible</div>
+      </div>
+      <div class="loc-card pronto">
+        <div class="loc-icon">🏔️</div>
+        <div class="loc-name">Toda La Rioja</div>
+        <div class="loc-sub">Próximamente</div>
+      </div>
     </div>
 
     <!-- DEPORTES -->
@@ -153,29 +165,12 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const LOCALIDADES = [
-  { name: 'Chilecito',              available: true  },
-  { name: 'La Rioja',               available: false },
-  { name: 'Aimogasta',              available: false },
-  { name: 'Chamical',               available: false },
-  { name: 'Chepes',                 available: false },
-  { name: 'Famatina',               available: false },
-  { name: 'Nonogasta',              available: false },
-  { name: 'Patquía',                available: false },
-  { name: 'Villa Unión',            available: false },
-  { name: 'Vinchina',               available: false },
-  { name: 'Villa Castelli',         available: false },
-  { name: 'San Blas de los Sauces', available: false },
-  { name: 'Olta',                   available: false },
-];
-
 let selectedSport = null;
 let selectedCity  = 'Chilecito';
 let sportsData    = [];
 
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
-  buildLocalidades();
   buildTimeSelect();
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('searchDate').value = today;
@@ -183,36 +178,10 @@ async function init() {
   await loadSports();
 }
 
-function buildLocalidades() {
-  const el = document.getElementById('locPills');
-
-  // Pill "Toda La Rioja"
-  el.appendChild(makePill('', 'Toda La Rioja', false, false));
-
-  for (const loc of LOCALIDADES) {
-    el.appendChild(makePill(loc.name, loc.name, loc.available, !loc.available));
-  }
-
-  // Activar Chilecito por default
-  selectCity('Chilecito');
-}
-
-function makePill(value, label, available, pronto) {
-  const btn = document.createElement('button');
-  btn.className = `loc-pill${available ? ' available' : ''}${pronto ? ' pronto' : ''}`;
-  btn.dataset.city = value;
-  if (available) btn.innerHTML = `<span class="dot"></span>${label}`;
-  else if (pronto) btn.innerHTML = `${label} <span style="font-size:0.7rem;opacity:0.7">pronto</span>`;
-  else btn.innerHTML = label;
-  if (!pronto) btn.onclick = () => selectCity(value);
-  return btn;
-}
-
-function selectCity(city) {
+function selectCity(city, el) {
   selectedCity = city;
-  document.querySelectorAll('.loc-pill').forEach(p => {
-    p.classList.toggle('active', p.dataset.city === city);
-  });
+  document.querySelectorAll('.loc-card:not(.pronto)').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
 }
 
 async function loadSports() {
