@@ -90,6 +90,7 @@
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+      justify-content: center;
     }
     .slot-chip {
       padding: 4px 10px;
@@ -119,7 +120,14 @@
       border-color: #f5b7b1;
       text-decoration: line-through;
       cursor: default;
-      opacity: 0.8;
+    }
+    /* Ocupado parcialmente (ej: reserva de 1:30hs toca solo parte del horario) */
+    .slot-chip.slot-half {
+      background: linear-gradient(90deg, #fde8ec 50%, white 50%);
+      color: #c0392b;
+      border-color: #f5b7b1;
+      text-decoration: line-through;
+      cursor: default;
     }
 
     /* ── MODAL RESERVA ───────────────────────────────────── */
@@ -405,37 +413,41 @@ function courtCard(c, idx, start_time, date, isOccupied = false) {
 
   const sport = sportsData.find(s => s.key === c.sport);
 
-  // 5 horarios siguientes disponibles desde el horario buscado
-  // Si la cancha está ocupada: el chip del horario buscado aparece tachado, luego los 5 libres
+  // Ventana -2h / +5h en orden cronológico
+  // Cada slot se clasifica: libre / ocupado-completo / ocupado-parcial
   const [sh, sm] = start_time.split(':').map(Number);
   const searchMins = sh * 60 + sm;
-  const freeSlots = [];
+  const slots = [];
 
-  // Chip especial para el horario buscado si está ocupada
-  const occupiedChip = isOccupied
-    ? `<button class="slot-chip slot-occupied" disabled>${start_time}</button>`
-    : '';
-
-  // Ventana: -2h hasta +4h desde el horario buscado (saltar el buscado en canchas ocupadas)
   for (let delta = -120; delta <= 300; delta += 60) {
-    if (isOccupied && delta === 0) continue; // ya se muestra como chip tachado
     const mins = searchMins + delta;
     if (mins < 6 * 60 || mins > 23 * 60) continue;
     const slotH     = Math.floor(mins / 60);
     const slotStart = `${String(slotH).padStart(2,'0')}:00`;
     const slotEnd   = `${String(slotH + 1).padStart(2,'0')}:00`;
-    const ocupado   = (c.occupied_today || []).some(os => os.start_time < slotEnd && os.end_time > slotStart);
-    if (!ocupado) freeSlots.push({ time: slotStart, isActive: delta === 0 });
+
+    let status = 'free';
+    for (const os of (c.occupied_today || [])) {
+      const overlaps = os.start_time < slotEnd && os.end_time > slotStart;
+      if (!overlaps) continue;
+      // Cubre el bloque completo de 1h?
+      const full = os.start_time <= slotStart && os.end_time >= slotEnd;
+      status = full ? 'full' : 'partial';
+      break;
+    }
+
+    slots.push({ time: slotStart, status, isSearched: delta === 0 });
   }
 
-  const slotsHtml = (occupiedChip || freeSlots.length)
+  const slotsHtml = slots.length
     ? `<div class="other-slots">
         <div class="other-slots-label">${isOccupied ? '🚫 Ocupada · otros horarios:' : '🕐 Horarios disponibles'}</div>
         <div class="other-slots-chips">
-          ${occupiedChip}
-          ${freeSlots.map(s =>
-            `<button class="slot-chip${s.isActive ? ' slot-active' : ''}" onclick="openReserveModal(${idx},'${s.time}','${date}')">${s.time}</button>`
-          ).join('')}
+          ${slots.map(s => {
+            if (s.status === 'full')    return `<button class="slot-chip slot-occupied" disabled>${s.time}</button>`;
+            if (s.status === 'partial') return `<button class="slot-chip slot-half" disabled>${s.time}</button>`;
+            return `<button class="slot-chip${s.isSearched ? ' slot-active' : ''}" onclick="openReserveModal(${idx},'${s.time}','${date}')">${s.time}</button>`;
+          }).join('')}
         </div>
       </div>`
     : '';
