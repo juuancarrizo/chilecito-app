@@ -291,13 +291,28 @@ app.get('/api/search', (req, res) => {
     suggestions = suggestions.sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta)).slice(0, 4);
   }
 
-  for (const c of available) {
-    c.images = db.prepare('SELECT * FROM court_images WHERE court_id = ? ORDER BY order_num LIMIT 3').all(c.id);
-    // Horarios ocupados del día para calcular slots disponibles en el cliente
-    c.occupied_today = db.prepare('SELECT start_time, end_time FROM occupied_slots WHERE court_id = ? AND date = ? ORDER BY start_time').all(c.id, date);
-  }
+  // Canchas ocupadas en ese horario (para mostrarlas con otros horarios disponibles)
+  const occupiedParams = city ? [sport, city, date, end_time, start_time] : [sport, date, end_time, start_time];
+  const occupied = db.prepare(`
+    SELECT c.*, v.name as venue_name, v.slug as venue_slug, v.city as venue_city,
+           v.phone as venue_phone, v.whatsapp as venue_whatsapp, v.cover_image as venue_cover
+    FROM courts c JOIN venues v ON v.id = c.venue_id
+    WHERE c.sport = ? AND c.active = 1 AND v.active = 1 ${cityFilter}
+    AND EXISTS (
+      SELECT 1 FROM occupied_slots os
+      WHERE os.court_id = c.id AND os.date = ? AND os.start_time < ? AND os.end_time > ?
+    )
+    ORDER BY c.name
+  `).all(...occupiedParams);
 
-  res.json({ available, suggestions, search: { sport, date, start_time, end_time, city } });
+  const enrichCourt = (c) => {
+    c.images = db.prepare('SELECT * FROM court_images WHERE court_id = ? ORDER BY order_num LIMIT 1').all(c.id);
+    c.occupied_today = db.prepare('SELECT start_time, end_time FROM occupied_slots WHERE court_id = ? AND date = ? ORDER BY start_time').all(c.id, date);
+  };
+  for (const c of available) enrichCourt(c);
+  for (const c of occupied)  enrichCourt(c);
+
+  res.json({ available, occupied, suggestions, search: { sport, date, start_time, end_time, city } });
 });
 
 // ── PÚBLICO — VENUES ──────────────────────────────────────────

@@ -113,6 +113,14 @@
       color: white;
       border-color: var(--primary);
     }
+    .slot-chip.slot-occupied {
+      background: #fde8ec;
+      color: #c0392b;
+      border-color: #f5b7b1;
+      text-decoration: line-through;
+      cursor: default;
+      opacity: 0.8;
+    }
 
     /* ── MODAL RESERVA ───────────────────────────────────── */
     .reserve-overlay {
@@ -339,14 +347,15 @@ function renderResults(data, start_time) {
   let html = `
     <div class="results-header">
       <h2>${sport.icon} ${sport.label} — ${dateLabel}</h2>
-      <span class="tag">${start_time} a ${data.search.end_time}</span>
     </div>
   `;
 
+  // Unir disponibles + ocupadas en un solo array para el modal
+  availableCourts = [...data.available, ...data.occupied];
+
   if (data.available.length) {
-    availableCourts = data.available; // guardar para el modal
-    html += `<p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px">${data.available.length} cancha${data.available.length !== 1 ? 's' : ''} disponible${data.available.length !== 1 ? 's' : ''}</p>
-    <div class="courts-grid">${data.available.map((c, i) => courtCard(c, i, start_time, data.search.date)).join('')}</div>`;
+    html += `<p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px">${data.available.length} cancha${data.available.length !== 1 ? 's' : ''} disponible${data.available.length !== 1 ? 's' : ''} a las ${start_time}</p>
+    <div class="courts-grid">${data.available.map((c, i) => courtCard(c, i, start_time, data.search.date, false)).join('')}</div>`;
   } else {
     html += `<div class="empty-state" style="padding:40px 0">
       <div class="icon">😔</div>
@@ -369,10 +378,24 @@ function renderResults(data, start_time) {
     }
   }
 
+  // Canchas ocupadas en ese horario pero con otros turnos libres
+  if (data.occupied.length) {
+    const offset = data.available.length;
+    html += `
+      <div style="margin-top:32px">
+        <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:16px">
+          🚫 ${data.occupied.length} cancha${data.occupied.length !== 1 ? 's' : ''} ocupada${data.occupied.length !== 1 ? 's' : ''} a las ${start_time} — otros horarios disponibles:
+        </p>
+        <div class="courts-grid">
+          ${data.occupied.map((c, i) => courtCard(c, offset + i, start_time, data.search.date, true)).join('')}
+        </div>
+      </div>`;
+  }
+
   el.innerHTML = html;
 }
 
-function courtCard(c, idx, start_time, date) {
+function courtCard(c, idx, start_time, date, isOccupied = false) {
   const SURFACES = { sintetico:'🌿 Sintético', acrilico:'🔵 Acrílico', cemento:'⬜ Cemento', parquet:'🪵 Parquet', tierra:'🟤 Tierra' };
   const WALLS    = { vidrio:'🪟 Pared vidrio', solido:'🧱 Pared sólida', mixto:'🪟🧱 Vidrio + sólida' };
   const tags = [];
@@ -382,25 +405,34 @@ function courtCard(c, idx, start_time, date) {
 
   const sport = sportsData.find(s => s.key === c.sport);
 
-  // Horarios disponibles en ventana: -2h hasta +4h desde el horario buscado
+  // 5 horarios siguientes disponibles desde el horario buscado
+  // Si la cancha está ocupada: el chip del horario buscado aparece tachado, luego los 5 libres
   const [sh, sm] = start_time.split(':').map(Number);
   const searchMins = sh * 60 + sm;
-  const otherSlots = [];
-  for (let delta = -120; delta <= 240; delta += 60) {
+  const freeSlots = [];
+
+  // Chip especial para el horario buscado si está ocupada
+  const occupiedChip = isOccupied
+    ? `<button class="slot-chip slot-occupied" disabled>${start_time}</button>`
+    : '';
+
+  // Buscar los 5 próximos libres (empezando desde el horario buscado inclusive si disponible)
+  for (let delta = isOccupied ? 60 : 0; freeSlots.length < 5 && delta <= 480; delta += 60) {
     const mins = searchMins + delta;
     if (mins < 6 * 60 || mins > 23 * 60) continue;
     const slotH     = Math.floor(mins / 60);
     const slotStart = `${String(slotH).padStart(2,'0')}:00`;
     const slotEnd   = `${String(slotH + 1).padStart(2,'0')}:00`;
-    const isActive  = delta === 0;
     const ocupado   = (c.occupied_today || []).some(os => os.start_time < slotEnd && os.end_time > slotStart);
-    if (!ocupado) otherSlots.push({ time: slotStart, isActive });
+    if (!ocupado) freeSlots.push({ time: slotStart, isActive: delta === 0 });
   }
-  const slotsHtml = otherSlots.length
+
+  const slotsHtml = (occupiedChip || freeSlots.length)
     ? `<div class="other-slots">
-        <div class="other-slots-label">🕐 Horarios disponibles</div>
+        <div class="other-slots-label">${isOccupied ? '🚫 Ocupada · otros horarios:' : '🕐 Horarios disponibles'}</div>
         <div class="other-slots-chips">
-          ${otherSlots.map(s =>
+          ${occupiedChip}
+          ${freeSlots.map(s =>
             `<button class="slot-chip${s.isActive ? ' slot-active' : ''}" onclick="openReserveModal(${idx},'${s.time}','${date}')">${s.time}</button>`
           ).join('')}
         </div>
