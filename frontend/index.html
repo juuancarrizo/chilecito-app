@@ -121,9 +121,17 @@
       text-decoration: line-through;
       cursor: default;
     }
-    /* Ocupado parcialmente (ej: reserva de 1:30hs toca solo parte del horario) */
-    .slot-chip.slot-half {
+    /* Ocupado en la primera mitad (reserva termina a los :30) — rojo izq, blanco der */
+    .slot-chip.slot-half-start {
       background: linear-gradient(90deg, #fde8ec 50%, white 50%);
+      color: #c0392b;
+      border-color: #f5b7b1;
+      text-decoration: line-through;
+      cursor: default;
+    }
+    /* Ocupado en la segunda mitad (reserva empieza a los :30) — blanco izq, rojo der */
+    .slot-chip.slot-half-end {
+      background: linear-gradient(90deg, white 50%, #fde8ec 50%);
       color: #c0392b;
       border-color: #f5b7b1;
       text-decoration: line-through;
@@ -430,9 +438,12 @@ function courtCard(c, idx, start_time, date, isOccupied = false) {
     for (const os of (c.occupied_today || [])) {
       const overlaps = os.start_time < slotEnd && os.end_time > slotStart;
       if (!overlaps) continue;
-      // Cubre el bloque completo de 1h?
       const full = os.start_time <= slotStart && os.end_time >= slotEnd;
-      status = full ? 'full' : 'partial';
+      if (full) { status = 'full'; break; }
+      // Parcial: detectar qué mitad está ocupada
+      // La ocupación empieza dentro del slot → segunda mitad ocupada
+      // La ocupación termina dentro del slot → primera mitad ocupada
+      status = os.start_time > slotStart ? 'half-end' : 'half-start';
       break;
     }
 
@@ -444,8 +455,9 @@ function courtCard(c, idx, start_time, date, isOccupied = false) {
         <div class="other-slots-label">${isOccupied ? '🚫 Ocupada · otros horarios:' : '🕐 Horarios disponibles'}</div>
         <div class="other-slots-chips">
           ${slots.map(s => {
-            if (s.status === 'full')    return `<button class="slot-chip slot-occupied" disabled>${s.time}</button>`;
-            if (s.status === 'partial') return `<button class="slot-chip slot-half" disabled>${s.time}</button>`;
+            if (s.status === 'full')       return `<button class="slot-chip slot-occupied" disabled>${s.time}</button>`;
+            if (s.status === 'half-start') return `<button class="slot-chip slot-half-start" disabled>${s.time}</button>`;
+            if (s.status === 'half-end')   return `<button class="slot-chip slot-half-end" disabled>${s.time}</button>`;
             return `<button class="slot-chip${s.isSearched ? ' slot-active' : ''}" onclick="openReserveModal(${idx},'${s.time}','${date}')">${s.time}</button>`;
           }).join('')}
         </div>
