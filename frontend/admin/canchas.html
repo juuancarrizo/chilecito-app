@@ -76,7 +76,7 @@
           <option value="">— Sin especificar —</option>
           <option value="vidrio">🪟 Vidrio</option>
           <option value="solido">🧱 Sólida</option>
-          <option value="mixto">🔄 Mixta</option>
+          <option value="mixto">🪟🧱 Vidrio + sólida</option>
         </select>
       </div>
     </div>
@@ -164,7 +164,7 @@ async function loadCourts() {
 }
 
 function surfaceLabel(s) { const m={sintetico:'🌿 Pasto sintético',acrilico:'🔵 Acrílico',cemento:'⬜ Cemento',parquet:'🪵 Parquet',tierra:'🟤 Tierra'}; return m[s]||s; }
-function wallLabel(s) { const m={vidrio:'🪟 Vidrio',solido:'🧱 Sólida',mixto:'🔄 Mixta'}; return m[s]||s; }
+function wallLabel(s) { const m={vidrio:'🪟 Pared vidrio',solido:'🧱 Pared sólida',mixto:'🪟🧱 Vidrio + sólida'}; return m[s]||s; }
 
 let _courts = [];
 async function editCourt(id) {

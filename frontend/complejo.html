@@ -46,11 +46,18 @@ function render(d) {
   if (d.phone) contacts.push(`<a href="tel:${d.phone}">📞 ${d.phone}</a>`);
   if (d.whatsapp) contacts.push(`<a class="wa" href="https://wa.me/${d.whatsapp.replace(/\D/g,'')}" target="_blank">💬 WhatsApp</a>`);
 
-  // Agrupar canchas por deporte
+  // Agrupar canchas por deporte — pádel primero, luego resto alfabético
+  const SPORT_PRIORITY = ['padel','futbol5','futbol7','futbol11','hockey','voley'];
   const bySport = {};
   for (const c of d.courts) { if (!bySport[c.sport]) bySport[c.sport] = []; bySport[c.sport].push(c); }
+  const sortedSports = Object.entries(bySport).sort(([a],[b]) => {
+    const ia = SPORT_PRIORITY.indexOf(a), ib = SPORT_PRIORITY.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1; if (ib !== -1) return 1;
+    return a.localeCompare(b,'es');
+  });
 
-  const courtsHtml = Object.entries(bySport).map(([sport, courts]) => `
+  const courtsHtml = sortedSports.map(([sport, courts]) => `
     <div class="sport-section">
       <div class="sport-section-header">
         <span class="sport-icon">${SPORT_ICONS[sport] || '🏟️'}</span>
@@ -63,7 +70,7 @@ function render(d) {
           if (c.surface) { const map={sintetico:'🌿 Pasto sintético',acrilico:'🔵 Acrílico',cemento:'⬜ Cemento',parquet:'🪵 Parquet',tierra:'🟤 Tierra'}; tags.push({text:map[c.surface]||c.surface,cls:''}); }
           if (c.covered) tags.push({text:'🏠 Techada',cls:'highlight'});
           else tags.push({text:'☀️ Al aire libre',cls:''});
-          if (c.wall_material && sport==='padel') { const map={vidrio:'🪟 Vidrio',solido:'🧱 Sólida',mixto:'🔄 Mixta'}; tags.push({text:map[c.wall_material]||c.wall_material,cls:''}); }
+          if (c.wall_material && sport==='padel') { const map={vidrio:'🪟 Pared vidrio',solido:'🧱 Pared sólida',mixto:'🪟🧱 Vidrio + sólida'}; tags.push({text:map[c.wall_material]||c.wall_material,cls:''}); }
           const firstImg = c.images?.[0];
           return `
             <div class="court-card">

@@ -292,6 +292,8 @@ app.get('/api/search', (req, res) => {
 
   for (const c of available) {
     c.images = db.prepare('SELECT * FROM court_images WHERE court_id = ? ORDER BY order_num LIMIT 3').all(c.id);
+    // Horarios ocupados del día para calcular slots disponibles en el cliente
+    c.occupied_today = db.prepare('SELECT start_time, end_time FROM occupied_slots WHERE court_id = ? AND date = ? ORDER BY start_time').all(c.id, date);
   }
 
   res.json({ available, suggestions, search: { sport, date, start_time, end_time, city } });

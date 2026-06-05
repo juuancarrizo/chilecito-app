@@ -62,6 +62,44 @@
       transition: all 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap;
     }
     .search-row .btn-search:hover { background: #d63651; transform: translateY(-1px); }
+
+    /* ── SLOTS DISPONIBLES ───────────────────────────────── */
+    .other-slots {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border-radius: 10px;
+    }
+    .other-slots-label {
+      font-size: 0.73rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .other-slots-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .slot-chip {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      background: white;
+      border: 1.5px solid var(--border);
+      color: var(--primary);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+    .slot-chip:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
   </style>
 </head>
 <body>
@@ -272,7 +310,7 @@ function renderResults(data, start_time) {
 
 function courtCard(c, start_time, end_time) {
   const SURFACES = { sintetico:'🌿 Sintético', acrilico:'🔵 Acrílico', cemento:'⬜ Cemento', parquet:'🪵 Parquet', tierra:'🟤 Tierra' };
-  const WALLS    = { vidrio:'🪟 Vidrio', solido:'🧱 Sólida', mixto:'🔄 Mixta' };
+  const WALLS    = { vidrio:'🪟 Pared vidrio', solido:'🧱 Pared sólida', mixto:'🪟🧱 Vidrio + sólida' };
   const tags = [];
   if (c.surface) tags.push({ text: SURFACES[c.surface] || c.surface, cls: '' });
   tags.push(c.covered ? { text: '🏠 Techada', cls: 'highlight' } : { text: '☀️ Al aire libre', cls: '' });
@@ -283,14 +321,37 @@ function courtCard(c, start_time, end_time) {
     : null;
   const sport = sportsData.find(s => s.key === c.sport);
 
+  // Calcular otros horarios disponibles en el día (cada 1h de 8 a 22)
+  const otherSlots = [];
+  for (let h = 8; h <= 22; h++) {
+    const slotStart = `${String(h).padStart(2,'0')}:00`;
+    const slotEnd   = `${String(h+1).padStart(2,'0')}:00`;
+    if (slotStart === start_time) continue; // ya es el horario buscado
+    const ocupado = (c.occupied_today || []).some(os => os.start_time < slotEnd && os.end_time > slotStart);
+    if (!ocupado) otherSlots.push(slotStart);
+  }
+  const slotsHtml = otherSlots.length
+    ? `<div class="other-slots">
+        <div class="other-slots-label">🕐 Más horarios libres</div>
+        <div class="other-slots-chips">
+          ${otherSlots.slice(0, 8).map(t => {
+            const waSlot = c.venue_whatsapp
+              ? `https://wa.me/${c.venue_whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Hola! Quiero reservar ${c.name} a las ${t} hs`)}`
+              : null;
+            return `<a class="slot-chip" ${waSlot ? `href="${waSlot}" target="_blank"` : `onclick="jumpToTime('${t}')"`}>${t}</a>`;
+          }).join('')}
+        </div>
+      </div>`
+    : '';
+
   return `<div class="court-card">
     ${c.images?.[0] ? `<img class="court-img" src="/uploads/${c.images[0].path}" alt="${c.name}">` : `<div class="court-no-img">${sport?.icon || '🏟️'}</div>`}
     <div class="court-body">
       <div class="court-venue">${c.venue_name}${c.venue_city ? ` · ${c.venue_city}` : ''}</div>
       <h3>${c.name}</h3>
       <div class="court-tags">${tags.map(t => `<span class="court-tag ${t.cls||''}">${t.text}</span>`).join('')}</div>
-      ${c.description ? `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">${c.description}</p>` : ''}
-      ${c.price_per_hour ? `<div class="court-price">$${Number(c.price_per_hour).toLocaleString('es-AR')}<span>/hora</span></div>` : ''}
+      ${c.price_per_hour ? `<div class="court-price" style="margin-bottom:12px">$${Number(c.price_per_hour).toLocaleString('es-AR')}<span>/hora</span></div>` : ''}
+      ${slotsHtml}
       <div class="court-footer">
         ${wa ? `<a class="btn-wa" href="${wa}" target="_blank">💬 Reservar</a>` : ''}
         <a class="btn-info" href="/complejo/${c.venue_slug}">Ver complejo</a>
