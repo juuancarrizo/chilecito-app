@@ -416,8 +416,9 @@ function courtCard(c, idx, start_time, date, isOccupied = false) {
     ? `<button class="slot-chip slot-occupied" disabled>${start_time}</button>`
     : '';
 
-  // Buscar los 5 próximos libres (empezando desde el horario buscado inclusive si disponible)
-  for (let delta = isOccupied ? 60 : 0; freeSlots.length < 5 && delta <= 480; delta += 60) {
+  // Ventana: -2h hasta +4h desde el horario buscado (saltar el buscado en canchas ocupadas)
+  for (let delta = -120; delta <= 240; delta += 60) {
+    if (isOccupied && delta === 0) continue; // ya se muestra como chip tachado
     const mins = searchMins + delta;
     if (mins < 6 * 60 || mins > 23 * 60) continue;
     const slotH     = Math.floor(mins / 60);
