@@ -103,6 +103,64 @@
       color: white;
       border-color: var(--primary);
     }
+
+    /* ── MODAL RESERVA ───────────────────────────────────── */
+    .reserve-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 600;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .reserve-overlay.open { opacity: 1; pointer-events: all; }
+    .reserve-sheet {
+      background: white;
+      border-radius: 20px 20px 0 0;
+      padding: 28px 24px 36px;
+      width: 100%; max-width: 520px;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(.32,.72,0,1);
+    }
+    .reserve-overlay.open .reserve-sheet { transform: translateY(0); }
+    .reserve-handle {
+      width: 40px; height: 4px; background: var(--border);
+      border-radius: 2px; margin: 0 auto 20px;
+    }
+    .reserve-court-info { margin-bottom: 20px; }
+    .reserve-court-info .venue { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--primary); margin-bottom: 3px; }
+    .reserve-court-info h3 { font-size: 1.15rem; font-weight: 900; margin-bottom: 6px; }
+    .reserve-court-info .time-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--bg); border-radius: 8px; padding: 6px 12px;
+      font-size: 0.88rem; font-weight: 700; color: var(--primary-dark);
+    }
+    .duration-label { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 18px 0 10px; }
+    .duration-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .dur-chip {
+      padding: 9px 16px; border-radius: 10px;
+      border: 2px solid var(--border); background: white;
+      font-size: 0.88rem; font-weight: 700; color: var(--text);
+      cursor: pointer; transition: all 0.18s;
+    }
+    .dur-chip:hover { border-color: var(--primary); color: var(--primary); }
+    .dur-chip.selected { background: var(--primary); border-color: var(--primary); color: white; }
+    .reserve-summary {
+      margin: 18px 0 20px; padding: 14px 16px;
+      background: var(--bg); border-radius: 12px;
+      font-size: 0.9rem; line-height: 1.7;
+      display: none;
+    }
+    .reserve-summary.show { display: block; }
+    .reserve-summary strong { color: var(--primary-dark); }
+    .btn-wa-confirm {
+      width: 100%; padding: 15px;
+      background: #25D366; color: white; border: none;
+      border-radius: 12px; font-size: 1rem; font-weight: 800;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background 0.2s;
+    }
+    .btn-wa-confirm:hover { background: #1da851; }
+    .btn-wa-confirm:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
   </style>
 </head>
 <body>
@@ -147,11 +205,6 @@
     <div class="search-row" id="searchRow" style="display:none;margin-top:20px">
       <input type="date" id="searchDate">
       <select id="searchTime"></select>
-      <select id="searchDuration">
-        <option value="60">1 hora</option>
-        <option value="90">1h 30min</option>
-        <option value="120">2 horas</option>
-      </select>
       <button class="btn-search" onclick="doSearch()">🔍 Buscar</button>
     </div>
   </div>
@@ -162,12 +215,44 @@
   <div id="resultsContent"></div>
 </div>
 
+<!-- MODAL RESERVA -->
+<div class="reserve-overlay" id="reserveOverlay" onclick="closeReserveModal(event)">
+  <div class="reserve-sheet">
+    <div class="reserve-handle"></div>
+    <div class="reserve-court-info">
+      <div class="venue" id="rv-venue"></div>
+      <h3 id="rv-court"></h3>
+      <div class="time-badge">
+        📅 <span id="rv-date"></span> &nbsp;·&nbsp; ⏰ <span id="rv-start"></span>
+      </div>
+    </div>
+
+    <div class="duration-label">¿Cuánto tiempo vas a jugar?</div>
+    <div class="duration-chips">
+      <button class="dur-chip" onclick="selectDuration(60,this)">1 hs</button>
+      <button class="dur-chip" onclick="selectDuration(90,this)">1:30 hs</button>
+      <button class="dur-chip" onclick="selectDuration(120,this)">2 hs</button>
+      <button class="dur-chip" onclick="selectDuration(150,this)">2:30 hs</button>
+      <button class="dur-chip" onclick="selectDuration(180,this)">3 hs</button>
+    </div>
+
+    <div class="reserve-summary" id="rv-summary"></div>
+
+    <button class="btn-wa-confirm" id="rv-btn" disabled onclick="confirmReserve()">
+      💬 Consultar disponibilidad por WhatsApp
+    </button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-let selectedSport = null;
-let selectedCity  = 'Chilecito';
-let sportsData    = [];
+let selectedSport   = null;
+let selectedCity    = 'Chilecito';
+let sportsData      = [];
+let availableCourts = [];   // se llena en renderResults
+let reserveCtx      = {};   // datos del modal activo
+let selectedDurMin  = null;
 
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
@@ -226,11 +311,11 @@ async function doSearch() {
   if (!selectedSport) { showToast('Seleccioná un deporte primero', 'error'); return; }
   const date       = document.getElementById('searchDate').value;
   const start_time = document.getElementById('searchTime').value;
-  const duration   = document.getElementById('searchDuration').value;
   if (!date) { showToast('Seleccioná una fecha', 'error'); return; }
 
   const cityParam = selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : '';
-  const res  = await fetch(`/api/search?sport=${selectedSport}&date=${date}&start_time=${start_time}&duration=${duration}${cityParam}`);
+  // duration fijo 60 para chequear disponibilidad (la duración real la elige el usuario al reservar)
+  const res  = await fetch(`/api/search?sport=${selectedSport}&date=${date}&start_time=${start_time}&duration=60${cityParam}`);
   const data = await res.json();
   renderResults(data, start_time);
   document.getElementById('resultsSection').style.display = 'block';
@@ -250,8 +335,9 @@ function renderResults(data, start_time) {
   `;
 
   if (data.available.length) {
+    availableCourts = data.available; // guardar para el modal
     html += `<p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px">${data.available.length} cancha${data.available.length !== 1 ? 's' : ''} disponible${data.available.length !== 1 ? 's' : ''}</p>
-    <div class="courts-grid">${data.available.map(c => courtCard(c, start_time, data.search.end_time)).join('')}</div>`;
+    <div class="courts-grid">${data.available.map((c, i) => courtCard(c, i, start_time, data.search.date)).join('')}</div>`;
   } else {
     html += `<div class="empty-state" style="padding:40px 0">
       <div class="icon">😔</div>
@@ -277,7 +363,7 @@ function renderResults(data, start_time) {
   el.innerHTML = html;
 }
 
-function courtCard(c, start_time, end_time) {
+function courtCard(c, idx, start_time, date) {
   const SURFACES = { sintetico:'🌿 Sintético', acrilico:'🔵 Acrílico', cemento:'⬜ Cemento', parquet:'🪵 Parquet', tierra:'🟤 Tierra' };
   const WALLS    = { vidrio:'🪟 Pared vidrio', solido:'🧱 Pared sólida', mixto:'🪟🧱 Vidrio + sólida' };
   const tags = [];
@@ -285,17 +371,14 @@ function courtCard(c, start_time, end_time) {
   tags.push(c.covered ? { text: '🏠 Techada', cls: 'highlight' } : { text: '☀️ Al aire libre', cls: '' });
   if (c.wall_material && c.sport === 'padel') tags.push({ text: WALLS[c.wall_material] || c.wall_material, cls: '' });
 
-  const wa = c.venue_whatsapp
-    ? `https://wa.me/${c.venue_whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Hola! Quiero reservar ${c.name} el ${start_time} hs`)}`
-    : null;
   const sport = sportsData.find(s => s.key === c.sport);
 
-  // Calcular otros horarios disponibles en el día (cada 1h de 8 a 22)
+  // Otros horarios disponibles hoy
   const otherSlots = [];
   for (let h = 8; h <= 22; h++) {
     const slotStart = `${String(h).padStart(2,'0')}:00`;
     const slotEnd   = `${String(h+1).padStart(2,'0')}:00`;
-    if (slotStart === start_time) continue; // ya es el horario buscado
+    if (slotStart === start_time) continue;
     const ocupado = (c.occupied_today || []).some(os => os.start_time < slotEnd && os.end_time > slotStart);
     if (!ocupado) otherSlots.push(slotStart);
   }
@@ -303,12 +386,9 @@ function courtCard(c, start_time, end_time) {
     ? `<div class="other-slots">
         <div class="other-slots-label">🕐 Más horarios libres</div>
         <div class="other-slots-chips">
-          ${otherSlots.slice(0, 8).map(t => {
-            const waSlot = c.venue_whatsapp
-              ? `https://wa.me/${c.venue_whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Hola! Quiero reservar ${c.name} a las ${t} hs`)}`
-              : null;
-            return `<a class="slot-chip" ${waSlot ? `href="${waSlot}" target="_blank"` : `onclick="jumpToTime('${t}')"`}>${t}</a>`;
-          }).join('')}
+          ${otherSlots.slice(0, 8).map(t =>
+            `<button class="slot-chip" onclick="openReserveModal(${idx},'${t}','${date}')">${t}</button>`
+          ).join('')}
         </div>
       </div>`
     : '';
@@ -323,7 +403,7 @@ function courtCard(c, start_time, end_time) {
         ${c.price_per_hour ? `<div class="court-price" style="margin-bottom:12px">$${Number(c.price_per_hour).toLocaleString('es-AR')}<span>/hora</span></div>` : ''}
         ${slotsHtml}
         <div class="court-footer">
-          ${wa ? `<a class="btn-wa" href="${wa}" target="_blank">💬 Reservar</a>` : ''}
+          <button class="btn-wa" onclick="openReserveModal(${idx},'${start_time}','${date}')">💬 Reservar</button>
           <a class="btn-info" href="/complejo/${c.venue_slug}">Ver complejo</a>
         </div>
       </div>
@@ -336,6 +416,90 @@ function jumpToTime(time) {
   // Forzar re-render limpio antes de buscar
   document.getElementById('resultsContent').innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted)">Buscando...</div>';
   doSearch();
+}
+
+// ── Modal de reserva ──────────────────────────────────────────
+function openReserveModal(idx, startTime, date) {
+  const c = availableCourts[idx];
+  if (!c) return;
+
+  reserveCtx = { c, startTime, date };
+  selectedDurMin = null;
+
+  // Resetear chips
+  document.querySelectorAll('.dur-chip').forEach(ch => ch.classList.remove('selected'));
+  document.getElementById('rv-summary').classList.remove('show');
+  document.getElementById('rv-btn').disabled = true;
+
+  // Rellenar info
+  document.getElementById('rv-venue').textContent = `${c.venue_name}${c.venue_city ? ' · ' + c.venue_city : ''}`;
+  document.getElementById('rv-court').textContent = c.name;
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+  document.getElementById('rv-date').textContent = dateLabel;
+  document.getElementById('rv-start').textContent = startTime;
+
+  document.getElementById('reserveOverlay').classList.add('open');
+}
+
+function closeReserveModal(e) {
+  if (e && e.target !== document.getElementById('reserveOverlay')) return;
+  document.getElementById('reserveOverlay').classList.remove('open');
+}
+
+function selectDuration(minutes, btn) {
+  selectedDurMin = minutes;
+  document.querySelectorAll('.dur-chip').forEach(ch => ch.classList.remove('selected'));
+  btn.classList.add('selected');
+
+  const { c, startTime, date } = reserveCtx;
+  const [h, m] = startTime.split(':').map(Number);
+  const endMins = h * 60 + m + minutes;
+  const endTime = `${String(Math.floor(endMins/60)).padStart(2,'0')}:${String(endMins%60).padStart(2,'0')}`;
+  const durLabel = minutes === 60 ? '1 hora' : minutes === 90 ? '1:30 hs' : minutes === 120 ? '2 horas' : minutes === 150 ? '2:30 hs' : '3 horas';
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const priceTotal = c.price_per_hour ? `$${Number(c.price_per_hour * minutes / 60).toLocaleString('es-AR')}` : null;
+
+  document.getElementById('rv-summary').innerHTML = `
+    <strong>${c.name}</strong> — ${c.venue_name}<br>
+    📅 ${dateLabel}<br>
+    ⏰ ${startTime} a ${endTime} hs · ${durLabel}
+    ${priceTotal ? `<br>💰 Total estimado: <strong>${priceTotal}</strong>` : ''}
+  `;
+  document.getElementById('rv-summary').classList.add('show');
+  document.getElementById('rv-btn').disabled = false;
+}
+
+function confirmReserve() {
+  if (!selectedDurMin || !reserveCtx.c) return;
+  const { c, startTime, date } = reserveCtx;
+  const [h, m] = startTime.split(':').map(Number);
+  const endMins = h * 60 + m + selectedDurMin;
+  const endTime = `${String(Math.floor(endMins/60)).padStart(2,'0')}:${String(endMins%60).padStart(2,'0')}`;
+  const durLabel = selectedDurMin === 60 ? '1 hora' : selectedDurMin === 90 ? '1:30 hs' : selectedDurMin === 120 ? '2 horas' : selectedDurMin === 150 ? '2:30 hs' : '3 horas';
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const priceTotal = c.price_per_hour ? `\n💰 Total estimado: $${Number(c.price_per_hour * selectedDurMin / 60).toLocaleString('es-AR')}` : '';
+  const sport = sportsData.find(s => s.key === c.sport);
+
+  const msg = `Hola! Me interesa reservar una cancha ${sport?.icon || ''}
+
+📋 *${c.name}*
+🏟️ ${c.venue_name}${c.venue_city ? ' · ' + c.venue_city : ''}
+📅 ${dateLabel}
+⏰ ${startTime} a ${endTime} hs (${durLabel})${priceTotal}
+
+¿Está disponible ese horario?`;
+
+  const wa = c.venue_whatsapp
+    ? `https://wa.me/${c.venue_whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`
+    : null;
+
+  if (wa) {
+    window.open(wa, '_blank');
+    document.getElementById('reserveOverlay').classList.remove('open');
+  } else {
+    showToast('Este complejo no tiene WhatsApp cargado', 'error');
+  }
 }
 
 function showToast(msg, type = '') {
