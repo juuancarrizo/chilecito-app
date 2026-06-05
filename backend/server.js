@@ -250,7 +250,8 @@ app.get('/api/search', (req, res) => {
   const end_time = `${String(Math.floor(endMins / 60)).padStart(2,'0')}:${String(endMins % 60).padStart(2,'0')}`;
 
   const cityFilter = city ? ' AND v.city = ?' : '';
-  const params = city ? [sport, date, end_time, start_time, city] : [sport, date, end_time, start_time];
+  // city va inmediatamente después de sport porque cityFilter se inserta tras v.active=1
+  const params = city ? [sport, city, date, end_time, start_time] : [sport, date, end_time, start_time];
 
   const available = db.prepare(`
     SELECT c.*, v.name as venue_name, v.slug as venue_slug, v.city as venue_city,

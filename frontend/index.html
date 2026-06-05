@@ -301,6 +301,8 @@ function courtCard(c, start_time, end_time) {
 
 function jumpToTime(time) {
   document.getElementById('searchTime').value = time;
+  // Forzar re-render limpio antes de buscar
+  document.getElementById('resultsContent').innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted)">Buscando...</div>';
   doSearch();
 }
 
