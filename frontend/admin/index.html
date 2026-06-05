@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Chilecito Deportes</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<nav>
+  <div class="nav-brand"><div class="dot"></div>Chilecito <span style="color:var(--accent2)">Deportes</span> — Admin</div>
+  <div class="nav-links"><a href="/" target="_blank">Ver sitio ↗</a><a href="#" onclick="logout()">Salir</a></div>
+</nav>
+<div id="app"><div style="text-align:center;padding:80px;color:#9ca3af">Cargando...</div></div>
+<div class="toast" id="toast"></div>
+
+<!-- MODAL SETUP -->
+<div class="modal-overlay" id="setupModal">
+  <div class="modal">
+    <h2>🏟️ Configurá tu complejo</h2>
+    <p style="color:var(--text-muted);margin-bottom:24px;font-size:0.9rem">Completá los datos básicos para empezar.</p>
+    <div class="form-group"><label>Nombre del complejo *</label><input type="text" id="s-name" placeholder="Ej: Club Pádel Chilecito" oninput="updateSlug()"></div>
+    <div class="form-group">
+      <label>URL (slug) *</label>
+      <input type="text" id="s-slug" placeholder="club-padel-chilecito">
+      <div class="slug-preview">chilecito.app/complejo/<span id="s-slug-pre">...</span></div>
+    </div>
+    <div class="form-group"><label>Dirección</label><input type="text" id="s-addr" placeholder="Av. San Martín 123, Chilecito"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Teléfono</label><input type="text" id="s-phone" placeholder="0383 4..."></div>
+      <div class="form-group"><label>WhatsApp (sin +)</label><input type="text" id="s-wa" placeholder="5493834..."></div>
+    </div>
+    <div class="form-group"><label>Descripción</label><textarea id="s-desc" placeholder="Describí tu complejo..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="createVenue()">Crear complejo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('token');
+if (!token) window.location = '/login.html';
+
+let me = null;
+
+const authH = () => ({ 'Content-Type': 'application/json', 'x-session-token': token });
+const authHF = () => ({ 'x-session-token': token });
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  setTimeout(() => t.className = 'toast', 2800);
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST', headers: authHF() });
+  localStorage.removeItem('token'); window.location = '/login.html';
+}
+
+function updateSlug() {
+  const v = document.getElementById('s-name').value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  document.getElementById('s-slug').value = v;
+  document.getElementById('s-slug-pre').textContent = v || '...';
+}
+document.getElementById('s-slug').addEventListener('input', function() { document.getElementById('s-slug-pre').textContent = this.value || '...'; });
+
+async function createVenue() {
+  const name = document.getElementById('s-name').value.trim();
+  const slug = document.getElementById('s-slug').value.trim();
+  if (!name || !slug) { showToast('Nombre y slug son obligatorios', 'error'); return; }
+  const res = await fetch('/api/admin/venue', { method: 'POST', headers: authH(), body: JSON.stringify({ name, slug, address: document.getElementById('s-addr').value.trim(), phone: document.getElementById('s-phone').value.trim(), whatsapp: document.getElementById('s-wa').value.trim(), description: document.getElementById('s-desc').value.trim() }) });
+  const data = await res.json();
+  if (!res.ok) { showToast(data.error, 'error'); return; }
+  document.getElementById('setupModal').classList.remove('open');
+  showToast('¡Complejo creado!', 'success');
+  loadDashboard();
+}
+
+async function loadDashboard() {
+  const res = await fetch('/api/auth/me', { headers: authHF() });
+  if (!res.ok) { localStorage.removeItem('token'); window.location = '/login.html'; return; }
+  me = await res.json();
+  if (!me.venue) { document.getElementById('setupModal').classList.add('open'); document.getElementById('app').innerHTML = ''; return; }
+
+  const [courts, slots] = await Promise.all([
+    fetch('/api/admin/courts', { headers: authHF() }).then(r => r.json()),
+    fetch(`/api/admin/slots?date=${new Date().toISOString().split('T')[0]}`, { headers: authHF() }).then(r => r.json())
+  ]);
+
+  const sportCount = {};
+  for (const c of courts) sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
+
+  document.getElementById('app').innerHTML = `
+    <div class="admin-layout">
+      ${sidebar('/admin/')}
+      <div class="admin-content">
+        <div class="page-header">
+          <h2>👋 Hola, ${me.owner.name || me.owner.email}</h2>
+          <a href="/complejo/${me.venue.slug}" target="_blank" class="btn btn-outline btn-sm">Ver mi complejo ↗</a>
+        </div>
+        <div class="stat-cards">
+          <div class="stat-card"><div class="num">${courts.length}</div><div class="label">Canchas</div></div>
+          <div class="stat-card"><div class="num">${slots.length}</div><div class="label">Turnos hoy</div></div>
+          <div class="stat-card"><div class="num">${courts.filter(c=>c.active).length}</div><div class="label">Activas</div></div>
+        </div>
+        <div class="section-title">Accesos rápidos</div>
+        <div onclick="window.location='/admin/canchas.html'" class="card" style="cursor:pointer;display:flex;align-items:center;gap:16px;margin-bottom:12px">
+          <span style="font-size:2rem">🎾</span>
+          <div><strong>Gestionar canchas</strong><div style="font-size:0.85rem;color:var(--text-muted)">Agregá, editá o desactivá canchas</div></div>
+          <span style="margin-left:auto;color:var(--primary);font-weight:700">→</span>
+        </div>
+        <div onclick="window.location='/admin/horarios.html'" class="card" style="cursor:pointer;display:flex;align-items:center;gap:16px;margin-bottom:12px">
+          <span style="font-size:2rem">📅</span>
+          <div><strong>Horarios ocupados</strong><div style="font-size:0.85rem;color:var(--text-muted)">Marcá turnos como reservados</div></div>
+          <span style="margin-left:auto;color:var(--primary);font-weight:700">→</span>
+        </div>
+        <div onclick="window.location='/admin/config.html'" class="card" style="cursor:pointer;display:flex;align-items:center;gap:16px">
+          <span style="font-size:2rem">⚙️</span>
+          <div><strong>Configuración</strong><div style="font-size:0.85rem;color:var(--text-muted)">Nombre, contacto, foto de portada</div></div>
+          <span style="margin-left:auto;color:var(--primary);font-weight:700">→</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function sidebar(active) {
+  return `<div class="sidebar">
+    <div class="sidebar-label">Mi complejo</div>
+    <a href="/admin/" ${active==='/admin/'?'class="active"':''}>🏠 Dashboard</a>
+    <a href="/admin/canchas.html" ${active==='/admin/canchas.html'?'class="active"':''}>🎾 Canchas</a>
+    <a href="/admin/horarios.html" ${active==='/admin/horarios.html'?'class="active"':''}>📅 Horarios</a>
+    <a href="/admin/config.html" ${active==='/admin/config.html'?'class="active"':''}>⚙️ Configuración</a>
+    <div class="sidebar-label">Cuenta</div>
+    <a href="/" target="_blank">👁️ Ver sitio</a>
+    <a href="#" onclick="logout()">🚪 Salir</a>
+  </div>`;
+}
+
+loadDashboard();
+</script>
+</body>
+</html>

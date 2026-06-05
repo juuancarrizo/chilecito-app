@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canchas — Admin</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<nav>
+  <div class="nav-brand"><div class="dot"></div>Chilecito <span style="color:var(--accent2)">Deportes</span> — Admin</div>
+  <div class="nav-links"><a href="/" target="_blank">Ver sitio ↗</a><a href="#" onclick="logout()">Salir</a></div>
+</nav>
+
+<div class="admin-layout">
+  <div class="sidebar">
+    <div class="sidebar-label">Mi complejo</div>
+    <a href="/admin/">🏠 Dashboard</a>
+    <a href="/admin/canchas.html" class="active">🎾 Canchas</a>
+    <a href="/admin/horarios.html">📅 Horarios</a>
+    <a href="/admin/config.html">⚙️ Configuración</a>
+    <div class="sidebar-label">Cuenta</div>
+    <a href="/" target="_blank">👁️ Ver sitio</a>
+    <a href="#" onclick="logout()">🚪 Salir</a>
+  </div>
+  <div class="admin-content">
+    <div class="page-header">
+      <h2>🎾 Canchas</h2>
+      <button class="btn btn-primary" onclick="openModal()">+ Nueva cancha</button>
+    </div>
+    <div id="courts-list"><div style="text-align:center;padding:40px;color:#9ca3af">Cargando...</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- MODAL CANCHA -->
+<div class="modal-overlay" id="courtModal">
+  <div class="modal">
+    <h2 id="modal-title">Nueva cancha</h2>
+    <input type="hidden" id="c-id">
+    <div class="form-group">
+      <label>Deporte *</label>
+      <select id="c-sport" onchange="togglePadelFields()">
+        <option value="padel">🎾 Pádel</option>
+        <option value="futbol5">⚽ Fútbol 5</option>
+        <option value="futbol7">⚽ Fútbol 7</option>
+        <option value="futbol11">🏟️ Fútbol 11</option>
+        <option value="hockey">🏑 Hockey</option>
+        <option value="voley">🏐 Vóley</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Nombre *</label><input type="text" id="c-name" placeholder="Ej: Cancha 1 — Vidrio"></div>
+    <div class="form-group"><label>Descripción</label><textarea id="c-desc" placeholder="Características adicionales..."></textarea></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Superficie</label>
+        <select id="c-surface">
+          <option value="">— Sin especificar —</option>
+          <option value="sintetico">🌿 Pasto sintético</option>
+          <option value="acrilico">🔵 Acrílico</option>
+          <option value="cemento">⬜ Cemento</option>
+          <option value="parquet">🪵 Parquet</option>
+          <option value="tierra">🟤 Tierra</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Precio por hora ($)</label>
+        <input type="number" id="c-price" placeholder="2500" min="0">
+      </div>
+    </div>
+    <div id="padel-fields">
+      <div class="form-group">
+        <label>Tipo de pared</label>
+        <select id="c-wall">
+          <option value="">— Sin especificar —</option>
+          <option value="vidrio">🪟 Vidrio</option>
+          <option value="solido">🧱 Sólida</option>
+          <option value="mixto">🔄 Mixta</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label style="margin-bottom:10px">¿Techada?</label>
+      <label class="toggle-wrap">
+        <div class="toggle" id="c-covered-toggle" onclick="toggleCovered()"></div>
+        <span id="c-covered-label">No techada</span>
+      </label>
+      <input type="hidden" id="c-covered" value="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCourt()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL FOTOS -->
+<div class="modal-overlay" id="photosModal">
+  <div class="modal">
+    <h2>📷 Fotos — <span id="photos-court-name"></span></h2>
+    <div id="photos-preview" class="images-preview"></div>
+    <div class="form-group" style="margin-top:16px"><label>Agregar fotos</label><input type="file" id="photos-input" multiple accept="image/*"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closePhotos()">Cerrar</button>
+      <button class="btn btn-primary" onclick="uploadPhotos()">Subir</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('token');
+if (!token) window.location = '/login.html';
+const SPORT_LABELS = { padel:'Pádel', futbol5:'Fútbol 5', futbol7:'Fútbol 7', futbol11:'Fútbol 11', hockey:'Hockey', voley:'Vóley' };
+let venueId = null, currentCourtId = null;
+
+const authH = () => ({ 'x-session-token': token });
+const authHJ = () => ({ 'x-session-token': token, 'Content-Type': 'application/json' });
+
+function showToast(msg, type='') { const t=document.getElementById('toast'); t.textContent=msg; t.className=`toast ${type} show`; setTimeout(()=>t.className='toast',2800); }
+async function logout() { await fetch('/api/auth/logout',{method:'POST',headers:authH()}); localStorage.removeItem('token'); window.location='/login.html'; }
+
+async function init() {
+  const res = await fetch('/api/auth/me', { headers: authH() });
+  if (!res.ok) { localStorage.removeItem('token'); window.location='/login.html'; return; }
+  const me = await res.json();
+  if (!me.venue) { window.location='/admin/'; return; }
+  venueId = me.venue.id;
+  loadCourts();
+}
+
+async function loadCourts() {
+  const courts = await fetch('/api/admin/courts', { headers: authH() }).then(r => r.json());
+  const el = document.getElementById('courts-list');
+  if (!courts.length) { el.innerHTML = `<div class="empty-state"><div class="icon">🎾</div><p>No tenés canchas aún. ¡Agregá la primera!</p></div>`; return; }
+
+  el.innerHTML = courts.map(c => `
+    <div class="card">
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+            <strong style="font-size:1rem">${c.name}</strong>
+            <span class="badge badge-blue">${SPORT_LABELS[c.sport]||c.sport}</span>
+            <span class="badge ${c.active?'badge-green':'badge-gray'}">${c.active?'Activa':'Inactiva'}</span>
+          </div>
+          <div style="display:flex;gap:12px;font-size:0.82rem;color:var(--text-muted);flex-wrap:wrap;margin-bottom:8px">
+            ${c.surface ? `<span>${surfaceLabel(c.surface)}</span>` : ''}
+            <span>${c.covered ? '🏠 Techada' : '☀️ Al aire libre'}</span>
+            ${c.wall_material && c.sport==='padel' ? `<span>${wallLabel(c.wall_material)}</span>` : ''}
+            ${c.price_per_hour ? `<span>💰 $${Number(c.price_per_hour).toLocaleString('es-AR')}/h</span>` : ''}
+            <span>📷 ${c.images?.length||0} foto${c.images?.length!==1?'s':''}</span>
+          </div>
+          ${c.description?`<p style="font-size:0.85rem;color:var(--text-muted)">${c.description}</p>`:''}
+        </div>
+        <div class="td-actions" style="flex-shrink:0">
+          <button class="btn btn-outline btn-sm" onclick="openPhotos(${c.id},'${c.name.replace(/'/g,"\\'")}')">📷 Fotos</button>
+          <button class="btn btn-outline btn-sm" onclick="editCourt(${c.id})">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCourt(${c.id},'${c.name.replace(/'/g,"\\'")}')">🗑️</button>
+        </div>
+      </div>
+      ${c.images?.length ? `<div class="images-preview" style="margin-top:14px">${c.images.map(img=>`<div class="img-thumb"><img src="/uploads/${img.path}"></div>`).join('')}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function surfaceLabel(s) { const m={sintetico:'🌿 Pasto sintético',acrilico:'🔵 Acrílico',cemento:'⬜ Cemento',parquet:'🪵 Parquet',tierra:'🟤 Tierra'}; return m[s]||s; }
+function wallLabel(s) { const m={vidrio:'🪟 Vidrio',solido:'🧱 Sólida',mixto:'🔄 Mixta'}; return m[s]||s; }
+
+let _courts = [];
+async function editCourt(id) {
+  _courts = await fetch('/api/admin/courts',{headers:authH()}).then(r=>r.json());
+  const c = _courts.find(x=>x.id===id); if(!c) return;
+  document.getElementById('modal-title').textContent='Editar cancha';
+  document.getElementById('c-id').value=id;
+  document.getElementById('c-sport').value=c.sport;
+  document.getElementById('c-name').value=c.name;
+  document.getElementById('c-desc').value=c.description||'';
+  document.getElementById('c-surface').value=c.surface||'';
+  document.getElementById('c-price').value=c.price_per_hour||'';
+  document.getElementById('c-wall').value=c.wall_material||'';
+  const cov = !!c.covered;
+  document.getElementById('c-covered').value=cov?'1':'0';
+  document.getElementById('c-covered-toggle').className='toggle'+(cov?' on':'');
+  document.getElementById('c-covered-label').textContent=cov?'Techada':'No techada';
+  togglePadelFields();
+  document.getElementById('courtModal').classList.add('open');
+}
+
+function openModal() {
+  document.getElementById('modal-title').textContent='Nueva cancha';
+  document.getElementById('c-id').value='';
+  document.getElementById('c-sport').value='padel';
+  document.getElementById('c-name').value='';
+  document.getElementById('c-desc').value='';
+  document.getElementById('c-surface').value='';
+  document.getElementById('c-price').value='';
+  document.getElementById('c-wall').value='';
+  document.getElementById('c-covered').value='0';
+  document.getElementById('c-covered-toggle').className='toggle';
+  document.getElementById('c-covered-label').textContent='No techada';
+  togglePadelFields();
+  document.getElementById('courtModal').classList.add('open');
+}
+function closeModal() { document.getElementById('courtModal').classList.remove('open'); }
+
+function togglePadelFields() {
+  document.getElementById('padel-fields').style.display = document.getElementById('c-sport').value==='padel' ? 'block' : 'none';
+}
+function toggleCovered() {
+  const val = document.getElementById('c-covered').value==='1';
+  document.getElementById('c-covered').value = val?'0':'1';
+  document.getElementById('c-covered-toggle').className = 'toggle'+(val?'':' on');
+  document.getElementById('c-covered-label').textContent = val?'No techada':'Techada';
+}
+
+async function saveCourt() {
+  const id = document.getElementById('c-id').value;
+  const body = { sport:document.getElementById('c-sport').value, name:document.getElementById('c-name').value.trim(), description:document.getElementById('c-desc').value.trim(), surface:document.getElementById('c-surface').value||null, wall_material:document.getElementById('c-wall').value||null, covered:document.getElementById('c-covered').value==='1', price_per_hour:parseFloat(document.getElementById('c-price').value)||null };
+  if(!body.name){showToast('El nombre es obligatorio','error');return;}
+  const url=id?`/api/admin/courts/${id}`:'/api/admin/courts', method=id?'PUT':'POST';
+  const res=await fetch(url,{method,headers:authHJ(),body:JSON.stringify(body)});
+  if(!res.ok){const d=await res.json();showToast(d.error,'error');return;}
+  closeModal(); showToast(id?'Cancha actualizada':'Cancha creada','success'); loadCourts();
+}
+
+async function deleteCourt(id, name) {
+  if(!confirm(`¿Eliminar "${name}"?`))return;
+  const res=await fetch(`/api/admin/courts/${id}`,{method:'DELETE',headers:authH()});
+  if(!res.ok){const d=await res.json();showToast(d.error,'error');return;}
+  showToast('Cancha eliminada'); loadCourts();
+}
+
+// FOTOS
+async function openPhotos(courtId, name) {
+  currentCourtId=courtId;
+  document.getElementById('photos-court-name').textContent=name;
+  document.getElementById('photos-input').value='';
+  document.getElementById('photosModal').classList.add('open');
+  await reloadPhotos(courtId);
+}
+function closePhotos(){document.getElementById('photosModal').classList.remove('open');currentCourtId=null;}
+
+async function reloadPhotos(courtId) {
+  const courts=await fetch('/api/admin/courts',{headers:authH()}).then(r=>r.json());
+  const c=courts.find(x=>x.id===courtId);
+  document.getElementById('photos-preview').innerHTML=c?.images?.map(img=>`<div class="img-thumb"><img src="/uploads/${img.path}"><button class="del-btn" onclick="deletePhoto(${courtId},${img.id})">×</button></div>`).join('')||'<span style="color:var(--text-muted);font-size:0.85rem">Sin fotos aún</span>';
+}
+async function deletePhoto(courtId,imgId){await fetch(`/api/admin/courts/${courtId}/images/${imgId}`,{method:'DELETE',headers:authH()});reloadPhotos(courtId);loadCourts();}
+async function uploadPhotos(){
+  const files=document.getElementById('photos-input').files;
+  if(!files.length){showToast('Seleccioná imágenes','error');return;}
+  const form=new FormData();for(const f of files)form.append('images',f);
+  const res=await fetch(`/api/admin/courts/${currentCourtId}/images`,{method:'POST',headers:authH(),body:form});
+  if(!res.ok){const d=await res.json();showToast(d.error,'error');return;}
+  document.getElementById('photos-input').value='';showToast('Fotos subidas','success');reloadPhotos(currentCourtId);loadCourts();
+}
+
+init();
+</script>
+</body>
+</html>

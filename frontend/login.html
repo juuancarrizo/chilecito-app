@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acceso propietarios — Chilecito Deportes</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    body { display:flex; flex-direction:column; min-height:100vh; background: linear-gradient(135deg, var(--primary-dark) 0%, #1a3a6b 100%); }
+    .login-wrap { flex:1; display:flex; align-items:center; justify-content:center; padding:40px 24px; }
+    .login-box { background:white; border-radius:var(--radius); box-shadow:0 20px 60px rgba(0,0,0,0.35); padding:40px; width:100%; max-width:400px; }
+    .login-box .logo { font-size:1.1rem; font-weight:800; color:var(--primary-dark); margin-bottom:6px; }
+    .login-box h2 { font-size:1.5rem; font-weight:900; margin-bottom:4px; }
+    .login-box .subtitle { color:var(--text-muted); font-size:0.9rem; margin-bottom:28px; }
+    .tabs { display:flex; gap:0; margin-bottom:24px; border-bottom:2px solid var(--border); }
+    .tab { flex:1; text-align:center; padding:10px; cursor:pointer; font-weight:700; color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-2px; transition:all 0.2s; font-size:0.9rem; }
+    .tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+    .error-msg { color:var(--accent); font-size:0.85rem; margin-top:8px; display:none; }
+  </style>
+</head>
+<body>
+<nav style="background:rgba(0,0,0,0.2)">
+  <div class="nav-brand"><div class="dot"></div><a href="/">Chilecito <span style="color:var(--accent2)">Deportes</span></a></div>
+  <div class="nav-links"><a href="/">← Volver</a></div>
+</nav>
+<div class="login-wrap">
+  <div class="login-box">
+    <div class="logo">🏟️ Chilecito Deportes</div>
+    <h2>Acceso propietarios</h2>
+    <p class="subtitle">Gestioná tu complejo y los horarios de tus canchas</p>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('login')">Iniciar sesión</div>
+      <div class="tab" onclick="switchTab('register')">Crear cuenta</div>
+    </div>
+    <div class="tab-panel active" id="panel-login">
+      <div class="form-group"><label>Email</label><input type="email" id="l-email" placeholder="tu@email.com"></div>
+      <div class="form-group"><label>Contraseña</label><input type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div class="error-msg" id="l-err"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px;padding:12px" onclick="doLogin()">Entrar</button>
+    </div>
+    <div class="tab-panel" id="panel-register">
+      <div class="form-group"><label>Tu nombre / Club</label><input type="text" id="r-name" placeholder="Club Deportivo..."></div>
+      <div class="form-group"><label>Email</label><input type="email" id="r-email" placeholder="tu@email.com"></div>
+      <div class="form-group"><label>Contraseña</label><input type="password" id="r-pass" placeholder="Mínimo 6 caracteres" onkeydown="if(event.key==='Enter')doRegister()"></div>
+      <div class="error-msg" id="r-err"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px;padding:12px" onclick="doRegister()">Crear cuenta</button>
+    </div>
+  </div>
+</div>
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',(i===0)===(tab==='login')));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById(`panel-${tab}`).classList.add('active');
+}
+async function doLogin() {
+  const email=document.getElementById('l-email').value, pass=document.getElementById('l-pass').value, err=document.getElementById('l-err');
+  err.style.display='none';
+  const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+  const data=await res.json();
+  if(!res.ok){err.textContent=data.error;err.style.display='block';return;}
+  localStorage.setItem('token',data.token);window.location='/admin/';
+}
+async function doRegister() {
+  const name=document.getElementById('r-name').value, email=document.getElementById('r-email').value, pass=document.getElementById('r-pass').value, err=document.getElementById('r-err');
+  err.style.display='none';
+  if(pass.length<6){err.textContent='La contraseña debe tener al menos 6 caracteres';err.style.display='block';return;}
+  const res=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass,name})});
+  const data=await res.json();
+  if(!res.ok){err.textContent=data.error;err.style.display='block';return;}
+  localStorage.setItem('token',data.token);window.location='/admin/';
+}
+if(localStorage.getItem('token')){fetch('/api/auth/me',{headers:{'x-session-token':localStorage.getItem('token')}}).then(r=>r.ok?window.location='/admin/':null);}
+</script>
+</body>
+</html>

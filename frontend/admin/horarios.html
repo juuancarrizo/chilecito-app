@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horarios — Admin</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<nav>
+  <div class="nav-brand"><div class="dot"></div>Chilecito <span style="color:var(--accent2)">Deportes</span> — Admin</div>
+  <div class="nav-links"><a href="/" target="_blank">Ver sitio ↗</a><a href="#" onclick="logout()">Salir</a></div>
+</nav>
+<div class="admin-layout">
+  <div class="sidebar">
+    <div class="sidebar-label">Mi complejo</div>
+    <a href="/admin/">🏠 Dashboard</a>
+    <a href="/admin/canchas.html">🎾 Canchas</a>
+    <a href="/admin/horarios.html" class="active">📅 Horarios</a>
+    <a href="/admin/config.html">⚙️ Configuración</a>
+    <div class="sidebar-label">Cuenta</div>
+    <a href="/" target="_blank">👁️ Ver sitio</a>
+    <a href="#" onclick="logout()">🚪 Salir</a>
+  </div>
+  <div class="admin-content">
+    <div class="page-header">
+      <h2>📅 Horarios ocupados</h2>
+      <button class="btn btn-primary" onclick="openModal()">+ Marcar turno</button>
+    </div>
+    <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:24px">
+      Marcá los turnos ocupados de cada cancha. Los usuarios solo verán los horarios libres.
+    </p>
+
+    <!-- Filtro por fecha -->
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:24px;flex-wrap:wrap">
+      <input type="date" id="filterDate" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:0.9rem" onchange="loadSlots()">
+      <select id="filterCourt" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:0.9rem" onchange="loadSlots()">
+        <option value="">Todas las canchas</option>
+      </select>
+    </div>
+
+    <div id="slots-list"><div style="text-align:center;padding:40px;color:#9ca3af">Cargando...</div></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="slotModal">
+  <div class="modal">
+    <h2>Marcar turno ocupado</h2>
+    <div class="form-group">
+      <label>Cancha *</label>
+      <select id="s-court"></select>
+    </div>
+    <div class="form-group">
+      <label>Fecha *</label>
+      <input type="date" id="s-date">
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Hora inicio *</label><select id="s-start"></select></div>
+      <div class="form-group"><label>Hora fin *</label><select id="s-end"></select></div>
+    </div>
+    <div class="form-group">
+      <label>Etiqueta</label>
+      <select id="s-label">
+        <option value="Reservado">Reservado</option>
+        <option value="Turno fijo">Turno fijo</option>
+        <option value="Mantenimiento">Mantenimiento</option>
+        <option value="Torneo">Torneo</option>
+        <option value="Bloqueado">Bloqueado</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveSlot()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('token');
+if (!token) window.location = '/login.html';
+const SPORT_LABELS = { padel:'Pádel', futbol5:'Fútbol 5', futbol7:'Fútbol 7', futbol11:'Fútbol 11', hockey:'Hockey', voley:'Vóley' };
+let courts = [];
+
+const authH = () => ({ 'x-session-token': token });
+const authHJ = () => ({ 'x-session-token': token, 'Content-Type': 'application/json' });
+
+function showToast(msg, type='') { const t=document.getElementById('toast'); t.textContent=msg; t.className=`toast ${type} show`; setTimeout(()=>t.className='toast',2800); }
+async function logout() { await fetch('/api/auth/logout',{method:'POST',headers:authH()}); localStorage.removeItem('token'); window.location='/login.html'; }
+
+function buildTimeOptions(sel, selected='') {
+  sel.innerHTML='';
+  for(let h=6;h<=23;h++) for(const m of[0,30]) {
+    const v=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    const o=document.createElement('option'); o.value=v; o.textContent=v; if(v===selected)o.selected=true;
+    sel.appendChild(o);
+  }
+}
+
+async function init() {
+  const res = await fetch('/api/auth/me',{headers:authH()});
+  if(!res.ok){localStorage.removeItem('token');window.location='/login.html';return;}
+  const me = await res.json();
+  if(!me.venue){window.location='/admin/';return;}
+
+  courts = await fetch('/api/admin/courts',{headers:authH()}).then(r=>r.json());
+
+  // Poblar select de canchas en el filtro
+  const fc = document.getElementById('filterCourt');
+  courts.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.name} (${SPORT_LABELS[c.sport]||c.sport})`;fc.appendChild(o);});
+
+  // Poblar select modal
+  const sc = document.getElementById('s-court');
+  courts.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.name} (${SPORT_LABELS[c.sport]||c.sport})`;sc.appendChild(o);});
+
+  // Fecha hoy
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('filterDate').value = today;
+  document.getElementById('s-date').value = today;
+  document.getElementById('s-date').min = today;
+
+  buildTimeOptions(document.getElementById('s-start'), '08:00');
+  buildTimeOptions(document.getElementById('s-end'), '09:00');
+
+  loadSlots();
+}
+
+async function loadSlots() {
+  const date = document.getElementById('filterDate').value;
+  const courtId = document.getElementById('filterCourt').value;
+  let url = `/api/admin/slots?date=${date}`;
+  if(courtId) url+=`&court_id=${courtId}`;
+  const slots = await fetch(url,{headers:authH()}).then(r=>r.json());
+  renderSlots(slots, date);
+}
+
+function renderSlots(slots, date) {
+  const el = document.getElementById('slots-list');
+  const dateLabel = new Date(date+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+
+  if(!slots.length) {
+    el.innerHTML=`<div class="empty-state"><div class="icon">📅</div><h3>Sin turnos marcados</h3><p>No hay turnos ocupados para ${dateLabel}</p></div>`;
+    return;
+  }
+
+  // Agrupar por cancha
+  const byCourt = {};
+  for(const s of slots){if(!byCourt[s.court_id])byCourt[s.court_id]={name:s.court_name,sport:s.sport,slots:[]};byCourt[s.court_id].slots.push(s);}
+
+  el.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:16px">${dateLabel} — ${slots.length} turno${slots.length!==1?'s':''}</div>` +
+    Object.values(byCourt).map(court=>`
+      <div class="horario-court">
+        <div class="horario-court-header">
+          <strong>${court.name}</strong>
+          <span class="sport-badge">${SPORT_LABELS[court.sport]||court.sport}</span>
+        </div>
+        <div class="slots-list">
+          ${court.slots.sort((a,b)=>a.start_time.localeCompare(b.start_time)).map(s=>`
+            <div class="slot-item">
+              <div class="slot-time">⏰ ${s.start_time} — ${s.end_time}</div>
+              <div class="slot-label">${s.label}</div>
+              <button class="slot-del" onclick="deleteSlot(${s.id})" title="Eliminar">✕</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+}
+
+function openModal() { document.getElementById('slotModal').classList.add('open'); }
+function closeModal() { document.getElementById('slotModal').classList.remove('open'); }
+
+async function saveSlot() {
+  const court_id=document.getElementById('s-court').value;
+  const date=document.getElementById('s-date').value;
+  const start_time=document.getElementById('s-start').value;
+  const end_time=document.getElementById('s-end').value;
+  const label=document.getElementById('s-label').value;
+  if(!court_id||!date){showToast('Completá todos los campos','error');return;}
+  if(start_time>=end_time){showToast('La hora de inicio debe ser menor a la de fin','error');return;}
+  const res=await fetch('/api/admin/slots',{method:'POST',headers:authHJ(),body:JSON.stringify({court_id,date,start_time,end_time,label})});
+  if(!res.ok){const d=await res.json();showToast(d.error,'error');return;}
+  closeModal();showToast('Turno marcado','success');loadSlots();
+}
+
+async function deleteSlot(id) {
+  if(!confirm('¿Liberar este turno?'))return;
+  const res=await fetch(`/api/admin/slots/${id}`,{method:'DELETE',headers:authH()});
+  if(!res.ok){const d=await res.json();showToast(d.error,'error');return;}
+  showToast('Turno liberado');loadSlots();
+}
+
+init();
+</script>
+</body>
+</html>

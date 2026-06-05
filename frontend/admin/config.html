@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuración — Admin</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<nav>
+  <div class="nav-brand"><div class="dot"></div>Chilecito <span style="color:var(--accent2)">Deportes</span> — Admin</div>
+  <div class="nav-links"><a href="/" target="_blank">Ver sitio ↗</a><a href="#" onclick="logout()">Salir</a></div>
+</nav>
+<div class="admin-layout">
+  <div class="sidebar">
+    <div class="sidebar-label">Mi complejo</div>
+    <a href="/admin/">🏠 Dashboard</a>
+    <a href="/admin/canchas.html">🎾 Canchas</a>
+    <a href="/admin/horarios.html">📅 Horarios</a>
+    <a href="/admin/config.html" class="active">⚙️ Configuración</a>
+    <div class="sidebar-label">Cuenta</div>
+    <a href="/" target="_blank">👁️ Ver sitio</a>
+    <a href="#" onclick="logout()">🚪 Salir</a>
+  </div>
+  <div class="admin-content">
+    <div class="page-header">
+      <h2>⚙️ Configuración</h2>
+      <button class="btn btn-primary" onclick="saveConfig()">Guardar cambios</button>
+    </div>
+    <div id="config-form"><div style="text-align:center;padding:40px;color:#9ca3af">Cargando...</div></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const token = localStorage.getItem('token');
+if(!token) window.location='/login.html';
+let venue=null;
+const authH=()=>({'x-session-token':token});
+const authHJ=()=>({'x-session-token':token,'Content-Type':'application/json'});
+function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className='toast',2800);}
+async function logout(){await fetch('/api/auth/logout',{method:'POST',headers:authH()});localStorage.removeItem('token');window.location='/login.html';}
+
+async function init(){
+  const res=await fetch('/api/auth/me',{headers:authH()});
+  if(!res.ok){localStorage.removeItem('token');window.location='/login.html';return;}
+  const me=await res.json();
+  if(!me.venue){window.location='/admin/';return;}
+  venue=me.venue;
+  renderForm();
+  loadAmenities();
+}
+
+function renderForm(){
+  document.getElementById('config-form').innerHTML=`
+    <!-- PORTADA -->
+    <div class="card">
+      <div class="section-title">📷 Foto de portada</div>
+      ${venue.cover_image?`<img src="/uploads/${venue.cover_image}" id="cover-img" style="width:100%;height:200px;object-fit:cover;border-radius:10px;margin-bottom:12px">`:`<div id="cover-img" style="width:100%;height:200px;background:linear-gradient(135deg,#e8f0fc,#d0ddf7);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:3rem;margin-bottom:12px">🏟️</div>`}
+      <input type="file" id="cover-file" accept="image/*" onchange="uploadCover()">
+    </div>
+
+    <!-- DATOS -->
+    <div class="card">
+      <div class="section-title">🏟️ Datos del complejo</div>
+      <div class="form-group"><label>Nombre *</label><input type="text" id="v-name" value="${venue.name||''}"></div>
+      <div class="form-group">
+        <label>URL (slug)</label>
+        <input type="text" id="v-slug" value="${venue.slug||''}" oninput="document.getElementById('slug-pre').textContent=this.value||'...'">
+        <div class="slug-preview">chilecito.app/complejo/<span id="slug-pre">${venue.slug||''}</span></div>
+      </div>
+      <div class="form-group"><label>Dirección</label><input type="text" id="v-addr" value="${venue.address||''}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Teléfono</label><input type="text" id="v-phone" value="${venue.phone||''}"></div>
+        <div class="form-group"><label>WhatsApp (sin +)</label><input type="text" id="v-wa" value="${venue.whatsapp||''}"></div>
+      </div>
+      <div class="form-group"><label>Descripción</label><textarea id="v-desc" rows="3">${venue.description||''}</textarea></div>
+    </div>
+
+    <!-- AMENIDADES -->
+    <div class="card">
+      <div class="section-title">✨ Servicios e instalaciones</div>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px">Vestuarios, estacionamiento, quincho, iluminación nocturna, etc.</p>
+      <div id="amenities-list"></div>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="openAmModal()">+ Agregar servicio</button>
+    </div>
+
+    <div style="text-align:right"><button class="btn btn-primary" onclick="saveConfig()">Guardar cambios</button></div>
+  `;
+}
+
+async function uploadCover(){
+  const file=document.getElementById('cover-file').files[0]; if(!file)return;
+  const form=new FormData(); form.append('image',file);
+  const res=await fetch('/api/admin/venue/cover',{method:'POST',headers:authH(),body:form});
+  if(!res.ok){showToast('Error al subir','error');return;}
+  const d=await res.json();
+  document.getElementById('cover-img').outerHTML=`<img src="/uploads/${d.filename}?t=${Date.now()}" id="cover-img" style="width:100%;height:200px;object-fit:cover;border-radius:10px;margin-bottom:12px">`;
+  showToast('Portada actualizada','success');
+}
+
+async function saveConfig(){
+  const body={name:document.getElementById('v-name').value.trim(),slug:document.getElementById('v-slug').value.trim(),address:document.getElementById('v-addr').value.trim(),phone:document.getElementById('v-phone').value.trim(),whatsapp:document.getElementById('v-wa').value.trim(),description:document.getElementById('v-desc').value.trim()};
+  if(!body.name){showToast('El nombre es obligatorio','error');return;}
+  const res=await fetch('/api/admin/venue',{method:'PUT',headers:authHJ(),body:JSON.stringify(body)});
+  if(!res.ok){const d=await res.json();showToast(d.error,'error');return;}
+  showToast('Guardado','success');
+}
+
+// AMENIDADES
+async function loadAmenities(){
+  const list=await fetch('/api/admin/amenities',{headers:authH()}).then(r=>r.json());
+  const el=document.getElementById('amenities-list'); if(!el)return;
+  el.innerHTML=list.length?list.map(a=>`
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:1.4rem">${a.icon||'✨'}</span>
+      <div style="flex:1"><strong style="font-size:0.9rem">${a.name}</strong>${a.description?`<div style="font-size:0.8rem;color:var(--text-muted)">${a.description}</div>`:''}</div>
+      ${a.bookable?`<span class="badge badge-blue">${a.price?'$'+Number(a.price).toLocaleString('es-AR'):'Reservable'}</span>`:''}
+      <button class="btn btn-danger btn-sm" onclick="deleteAm(${a.id})">🗑️</button>
+    </div>`).join(''):'<div style="color:var(--text-muted);font-size:0.85rem">Sin servicios aún</div>';
+}
+
+let amModal=null;
+function openAmModal(){
+  if(!document.getElementById('am-modal')){
+    document.body.insertAdjacentHTML('beforeend',`
+      <div class="modal-overlay open" id="am-modal">
+        <div class="modal">
+          <h2>Agregar servicio</h2>
+          <div class="form-group"><label>Nombre *</label><input type="text" id="am-name" placeholder="Ej: Vestuarios con ducha"></div>
+          <div class="form-group"><label>Descripción</label><input type="text" id="am-desc" placeholder="Opcional"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Ícono (emoji)</label><input type="text" id="am-icon" value="✨" maxlength="4"></div>
+            <div class="form-group"><label>Precio (si es reservable)</label><input type="number" id="am-price" placeholder="Gratis = dejar vacío"></div>
+          </div>
+          <label class="toggle-wrap" style="margin-bottom:16px">
+            <div class="toggle" id="am-bookable-toggle" onclick="toggleAmBookable()"></div>
+            <span id="am-bookable-label">No reservable</span>
+          </label>
+          <input type="hidden" id="am-bookable" value="0">
+          <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeAmModal()">Cancelar</button>
+            <button class="btn btn-primary" onclick="saveAm()">Agregar</button>
+          </div>
+        </div>
+      </div>`);
+  } else document.getElementById('am-modal').classList.add('open');
+}
+function closeAmModal(){const m=document.getElementById('am-modal');if(m)m.classList.remove('open');}
+function toggleAmBookable(){const v=document.getElementById('am-bookable').value==='1';document.getElementById('am-bookable').value=v?'0':'1';document.getElementById('am-bookable-toggle').className='toggle'+(v?'':' on');document.getElementById('am-bookable-label').textContent=v?'No reservable':'Reservable';}
+async function saveAm(){
+  const name=document.getElementById('am-name').value.trim();if(!name){showToast('Nombre requerido','error');return;}
+  const body={name,description:document.getElementById('am-desc').value.trim(),icon:document.getElementById('am-icon').value||'✨',bookable:document.getElementById('am-bookable').value==='1',price:parseFloat(document.getElementById('am-price').value)||null};
+  const res=await fetch('/api/admin/amenities',{method:'POST',headers:authHJ(),body:JSON.stringify(body)});
+  if(!res.ok){const d=await res.json();showToast(d.error,'error');return;}
+  closeAmModal();showToast('Servicio agregado','success');loadAmenities();
+}
+async function deleteAm(id){
+  if(!confirm('¿Eliminar este servicio?'))return;
+  await fetch(`/api/admin/amenities/${id}`,{method:'DELETE',headers:authH()});
+  showToast('Eliminado');loadAmenities();
+}
+
+init();
+</script>
+</body>
+</html>
