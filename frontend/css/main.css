@@ -195,18 +195,31 @@ nav {
   display: flex;
   gap: 8px;
 }
-.court-card .court-footer a {
+.court-card .court-footer a,
+.court-card .court-footer button {
   flex: 1;
   text-align: center;
-  padding: 9px;
-  border-radius: 8px;
-  font-size: 0.82rem;
+  padding: 10px;
+  border-radius: 100px;
+  font-size: 0.85rem;
   font-weight: 700;
   transition: all 0.2s;
+  cursor: pointer;
+  outline: none;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
-.court-card .court-footer .btn-wa { background: #25D366; color: white; border: none; cursor: pointer; outline: none; }
-.court-card .court-footer .btn-wa:hover { background: #1da851; }
-.court-card .court-footer .btn-info { background: var(--bg); color: var(--primary); border: 1.5px solid var(--border); }
+.court-card .court-footer .btn-wa {
+  background: #25D366;
+  color: white;
+  border: none;
+  box-shadow: 0 3px 10px rgba(37,211,102,0.35);
+}
+.court-card .court-footer .btn-wa:hover { background: #1da851; box-shadow: 0 4px 14px rgba(37,211,102,0.45); }
+.court-card .court-footer .btn-info { background: transparent; color: var(--primary); border: 2px solid var(--border); }
 .court-card .court-footer .btn-info:hover { border-color: var(--primary); }
 
 /* SUGGESTIONS */

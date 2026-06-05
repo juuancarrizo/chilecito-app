@@ -255,7 +255,8 @@ app.get('/api/search', (req, res) => {
 
   const available = db.prepare(`
     SELECT c.*, v.name as venue_name, v.slug as venue_slug, v.city as venue_city,
-           v.address as venue_address, v.phone as venue_phone, v.whatsapp as venue_whatsapp
+           v.address as venue_address, v.phone as venue_phone, v.whatsapp as venue_whatsapp,
+           v.cover_image as venue_cover
     FROM courts c JOIN venues v ON v.id = c.venue_id
     WHERE c.sport = ? AND c.active = 1 AND v.active = 1 ${cityFilter}
     AND NOT EXISTS (

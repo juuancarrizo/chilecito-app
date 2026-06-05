@@ -397,8 +397,15 @@ function courtCard(c, idx, start_time, date) {
       </div>`
     : '';
 
+  // Imagen: foto de cancha → portada del complejo → emoji
+  const imgHtml = c.images?.[0]
+    ? `<img class="court-img" src="/uploads/${c.images[0].path}" alt="${c.name}">`
+    : c.venue_cover
+      ? `<img class="court-img" src="/uploads/${c.venue_cover}" alt="${c.venue_name}">`
+      : `<div class="court-no-img">${sport?.icon || '🏟️'}</div>`;
+
   return `<div class="court-card">
-    ${c.images?.[0] ? `<img class="court-img" src="/uploads/${c.images[0].path}" alt="${c.name}">` : `<div class="court-no-img">${sport?.icon || '🏟️'}</div>`}
+    ${imgHtml}
     <div class="court-body">
       <div class="court-venue">${c.venue_name}${c.venue_city ? ` · ${c.venue_city}` : ''}</div>
       <h3>${c.name}</h3>
