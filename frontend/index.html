@@ -350,11 +350,13 @@ function courtCard(c, start_time, end_time) {
       <div class="court-venue">${c.venue_name}${c.venue_city ? ` · ${c.venue_city}` : ''}</div>
       <h3>${c.name}</h3>
       <div class="court-tags">${tags.map(t => `<span class="court-tag ${t.cls||''}">${t.text}</span>`).join('')}</div>
-      ${c.price_per_hour ? `<div class="court-price" style="margin-bottom:12px">$${Number(c.price_per_hour).toLocaleString('es-AR')}<span>/hora</span></div>` : ''}
-      ${slotsHtml}
-      <div class="court-footer">
-        ${wa ? `<a class="btn-wa" href="${wa}" target="_blank">💬 Reservar</a>` : ''}
-        <a class="btn-info" href="/complejo/${c.venue_slug}">Ver complejo</a>
+      <div class="court-bottom">
+        ${c.price_per_hour ? `<div class="court-price" style="margin-bottom:12px">$${Number(c.price_per_hour).toLocaleString('es-AR')}<span>/hora</span></div>` : ''}
+        ${slotsHtml}
+        <div class="court-footer">
+          ${wa ? `<a class="btn-wa" href="${wa}" target="_blank">💬 Reservar</a>` : ''}
+          <a class="btn-info" href="/complejo/${c.venue_slug}">Ver complejo</a>
+        </div>
       </div>
     </div>
   </div>`;
