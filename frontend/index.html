@@ -108,6 +108,11 @@
       color: white;
       border-color: var(--primary);
     }
+    .slot-chip.slot-active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
 
     /* ── MODAL RESERVA ───────────────────────────────────── */
     .reserve-overlay {
@@ -377,21 +382,26 @@ function courtCard(c, idx, start_time, date) {
 
   const sport = sportsData.find(s => s.key === c.sport);
 
-  // Otros horarios disponibles hoy
+  // Horarios disponibles en ventana: -2h hasta +4h desde el horario buscado
+  const [sh, sm] = start_time.split(':').map(Number);
+  const searchMins = sh * 60 + sm;
   const otherSlots = [];
-  for (let h = 8; h <= 22; h++) {
-    const slotStart = `${String(h).padStart(2,'0')}:00`;
-    const slotEnd   = `${String(h+1).padStart(2,'0')}:00`;
-    if (slotStart === start_time) continue;
-    const ocupado = (c.occupied_today || []).some(os => os.start_time < slotEnd && os.end_time > slotStart);
-    if (!ocupado) otherSlots.push(slotStart);
+  for (let delta = -120; delta <= 240; delta += 60) {
+    const mins = searchMins + delta;
+    if (mins < 6 * 60 || mins > 23 * 60) continue;
+    const slotH     = Math.floor(mins / 60);
+    const slotStart = `${String(slotH).padStart(2,'0')}:00`;
+    const slotEnd   = `${String(slotH + 1).padStart(2,'0')}:00`;
+    const isActive  = delta === 0;
+    const ocupado   = (c.occupied_today || []).some(os => os.start_time < slotEnd && os.end_time > slotStart);
+    if (!ocupado) otherSlots.push({ time: slotStart, isActive });
   }
   const slotsHtml = otherSlots.length
     ? `<div class="other-slots">
-        <div class="other-slots-label">🕐 Más horarios libres</div>
+        <div class="other-slots-label">🕐 Horarios disponibles</div>
         <div class="other-slots-chips">
-          ${otherSlots.slice(0, 8).map(t =>
-            `<button class="slot-chip" onclick="openReserveModal(${idx},'${t}','${date}')">${t}</button>`
+          ${otherSlots.map(s =>
+            `<button class="slot-chip${s.isActive ? ' slot-active' : ''}" onclick="openReserveModal(${idx},'${s.time}','${date}')">${s.time}</button>`
           ).join('')}
         </div>
       </div>`
