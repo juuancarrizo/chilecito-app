@@ -37,6 +37,18 @@
     .tab-panel.active { display:block; }
     .range-btn { padding:6px 14px; border-radius:8px; border:1.5px solid var(--border); background:white; cursor:pointer; font-size:0.82rem; font-weight:600; color:var(--text-muted); transition:all 0.18s; }
     .range-btn.active { border-color:var(--primary); color:var(--primary); background:#f0f4ff; }
+    .torneo-card { background:white; border-radius:14px; box-shadow:var(--shadow); padding:20px; margin-bottom:12px; display:flex; align-items:center; gap:16px; }
+    .torneo-card .tc-info { flex:1 }
+    .torneo-card .tc-name { font-size:1rem; font-weight:900; margin-bottom:4px; }
+    .torneo-card .tc-meta { font-size:0.8rem; color:var(--text-muted); }
+    .participant-row { display:flex; align-items:center; gap:8px; padding:10px 12px; background:var(--bg); border-radius:10px; margin-bottom:6px; }
+    .participant-row .pr-name { flex:1; font-weight:700; font-size:0.9rem; }
+    .participant-row .pr-pts { font-size:0.8rem; color:var(--primary); font-weight:800; min-width:60px; text-align:right; }
+    .match-row { padding:10px 12px; background:var(--bg); border-radius:10px; margin-bottom:6px; }
+    .match-row .mr-players { font-weight:700; font-size:0.88rem; margin-bottom:4px; }
+    .match-row .mr-meta { font-size:0.75rem; color:var(--text-muted); display:flex; gap:10px; align-items:center; }
+    .match-score { color:var(--primary); font-weight:800; }
+    @media(max-width:600px){ .detail-grid { grid-template-columns:1fr !important; } }
   </style>
 </head>
 <body>
@@ -64,6 +76,7 @@
   <div class="tab-nav">
     <div class="tab active" onclick="switchTab('metrics')">📊 Métricas</div>
     <div class="tab" onclick="switchTab('sports')">🎾 Deportes</div>
+    <div class="tab" onclick="switchTab('torneos')">🏆 Torneos</div>
   </div>
 
   <!-- MÉTRICAS -->
@@ -106,9 +119,151 @@
     </div>
     <div id="sports-list"></div>
   </div>
+
+  <!-- TORNEOS -->
+  <div class="tab-panel" id="tab-torneos">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <p style="color:var(--text-muted);font-size:0.9rem">Torneos de pádel — solo visibles para el super admin.</p>
+      <button class="btn btn-primary" onclick="openTorneoModal()">+ Nuevo torneo</button>
+    </div>
+    <div id="torneos-list"></div>
+
+    <!-- Detalle del torneo seleccionado -->
+    <div id="torneo-detail" style="display:none;margin-top:28px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <button class="btn btn-outline btn-sm" onclick="closeTorneoDetail()">← Volver</button>
+        <h2 id="detail-title" style="font-size:1.1rem;font-weight:900"></h2>
+        <span id="detail-status-badge" class="badge"></span>
+      </div>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px">
+        <button class="btn btn-outline btn-sm" onclick="openAddParticipant()">+ Participante</button>
+        <button class="btn btn-outline btn-sm" onclick="openAddMatch()">+ Partido</button>
+        <button class="btn btn-outline btn-sm" onclick="openEditTorneo()">✏️ Editar torneo</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;flex-wrap:wrap" class="detail-grid">
+        <!-- Ranking/participantes -->
+        <div class="metric-card">
+          <h3>Ranking / Participantes</h3>
+          <div id="participants-list"></div>
+        </div>
+        <!-- Fixture -->
+        <div class="metric-card">
+          <h3>Fixture / Partidos</h3>
+          <div id="matches-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL TORNEO -->
+<div class="modal-overlay" id="torneoModal">
+  <div class="modal">
+    <h2 id="torneo-modal-title">Nuevo torneo</h2>
+    <input type="hidden" id="tm-id">
+    <div class="form-group">
+      <label>Nombre del torneo *</label>
+      <input type="text" id="tm-name" placeholder="Ej: Torneo de Pádel Verano 2026">
+    </div>
+    <div class="form-group">
+      <label>Descripción</label>
+      <textarea id="tm-desc" rows="2" placeholder="Categoría, formato, etc." style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--border);font-size:0.9rem;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1">
+        <label>Fecha inicio</label>
+        <input type="date" id="tm-start">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Fecha fin</label>
+        <input type="date" id="tm-end">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Estado</label>
+      <select id="tm-status" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--border);font-size:0.9rem">
+        <option value="upcoming">Próximamente</option>
+        <option value="active">En curso</option>
+        <option value="finished">Finalizado</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeTorneoModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTorneo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PARTICIPANTE -->
+<div class="modal-overlay" id="participantModal">
+  <div class="modal">
+    <h2>Agregar participante</h2>
+    <input type="hidden" id="pm-pid">
+    <div class="form-group">
+      <label>Nombre (jugador 1) *</label>
+      <input type="text" id="pm-name" placeholder="Juan García">
+    </div>
+    <div class="form-group">
+      <label>Pareja (opcional — para dobles)</label>
+      <input type="text" id="pm-partner" placeholder="Pedro López">
+    </div>
+    <div class="form-group">
+      <label>WhatsApp (opcional)</label>
+      <input type="text" id="pm-wa" placeholder="3825000000">
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1"><label>Puntos</label><input type="number" id="pm-pts" value="0" min="0"></div>
+      <div class="form-group" style="flex:1"><label>Victorias</label><input type="number" id="pm-wins" value="0" min="0"></div>
+      <div class="form-group" style="flex:1"><label>Derrotas</label><input type="number" id="pm-losses" value="0" min="0"></div>
+      <div class="form-group" style="flex:1"><label>Posición</label><input type="number" id="pm-pos" value="" min="1"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeParticipantModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveParticipant()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PARTIDO -->
+<div class="modal-overlay" id="matchModal">
+  <div class="modal">
+    <h2>Agregar partido</h2>
+    <input type="hidden" id="mm-id">
+    <div class="form-group">
+      <label>Ronda</label>
+      <select id="mm-round" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--border);font-size:0.9rem">
+        <option>Fase de grupos</option><option>Cuartos de final</option><option>Semifinal</option><option>Final</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1"><label>Jugador/Pareja 1 *</label><input type="text" id="mm-p1" placeholder="Juan / Pedro"></div>
+      <div class="form-group" style="flex:1"><label>Jugador/Pareja 2 *</label><input type="text" id="mm-p2" placeholder="Carlos / Luis"></div>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1"><label>Fecha</label><input type="date" id="mm-date"></div>
+      <div class="form-group" style="flex:1"><label>Hora</label><input type="time" id="mm-time"></div>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1"><label>Resultado J1</label><input type="text" id="mm-s1" placeholder="6-4 7-5"></div>
+      <div class="form-group" style="flex:1"><label>Resultado J2</label><input type="text" id="mm-s2" placeholder="4-6 5-7"></div>
+    </div>
+    <div class="form-group">
+      <label>Estado</label>
+      <select id="mm-status" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--border);font-size:0.9rem">
+        <option value="pending">Pendiente</option>
+        <option value="played">Jugado</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeMatchModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveMatch()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL DEPORTE -->
 <div class="modal-overlay" id="sportModal">
@@ -171,9 +326,11 @@ async function init() {
 }
 
 function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (i===0)===(tab==='metrics')));
+  const tabs = ['metrics','sports','torneos'];
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', tabs[i] === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById(`tab-${tab}`).classList.add('active');
+  if (tab === 'torneos') loadTorneos();
 }
 
 function setDays(days, btn) {
@@ -323,6 +480,194 @@ async function deleteSport(id, label) {
   if (!confirm(`¿Eliminar el deporte "${label}"? Las canchas con ese deporte quedarán sin categoría.`)) return;
   await fetch(`/api/super/sports/${id}`, { method: 'DELETE', headers: authH() });
   showToast('Deporte eliminado'); loadSports();
+}
+
+// ── TORNEOS ───────────────────────────────────────────────────
+let torneos = [];
+let activeTorneo = null;
+
+async function loadTorneos() {
+  const list = await fetch('/api/super/tournaments', { headers: authH() }).then(r => r.json());
+  torneos = list;
+  const el = document.getElementById('torneos-list');
+  document.getElementById('torneo-detail').style.display = 'none';
+  if (!list.length) { el.innerHTML = '<div style="color:var(--text-muted);padding:20px 0">Sin torneos creados aún.</div>'; return; }
+  el.innerHTML = list.map(t => `
+    <div class="torneo-card">
+      <div class="tc-info">
+        <div class="tc-name">🏆 ${t.name}</div>
+        <div class="tc-meta">${statusLabel(t.status)} · ${t.participants_count} participantes · ${t.matches_count} partidos${t.start_date ? ' · Desde ' + fmtD(t.start_date) : ''}</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="openTorneoDetail(${t.id})">Ver detalle</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteTorneo(${t.id},'${t.name.replace(/'/g,'')}')">🗑️</button>
+    </div>`).join('');
+}
+
+function statusLabel(s) { return s === 'active' ? '🟢 En curso' : s === 'finished' ? '⚫ Finalizado' : '🟡 Próximamente'; }
+function fmtD(d) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day:'numeric', month:'short' }) : ''; }
+
+async function openTorneoDetail(id) {
+  activeTorneo = await fetch(`/api/tournaments/${id}`).then(r => r.json());
+  document.getElementById('torneos-list').style.display = 'none';
+  document.getElementById('torneo-detail').style.display = 'block';
+  document.getElementById('detail-title').textContent = activeTorneo.name;
+  document.getElementById('detail-status-badge').textContent = statusLabel(activeTorneo.status);
+  renderParticipants();
+  renderMatches();
+}
+
+function closeTorneoDetail() {
+  document.getElementById('torneos-list').style.display = 'block';
+  document.getElementById('torneo-detail').style.display = 'none';
+  activeTorneo = null;
+  loadTorneos();
+}
+
+function renderParticipants() {
+  const el = document.getElementById('participants-list');
+  const ps = activeTorneo.participants;
+  if (!ps.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem">Sin participantes aún.</div>'; return; }
+  el.innerHTML = ps.map((p, i) => `
+    <div class="participant-row">
+      <div style="font-weight:800;color:var(--accent2);min-width:22px">${p.position || i+1}</div>
+      <div class="pr-name">${p.name}${p.partner_name ? ' / ' + p.partner_name : ''}</div>
+      <div class="pr-pts">${p.wins}V ${p.losses}D · ${p.points}pts</div>
+      <button class="btn btn-outline btn-sm" onclick="editParticipant(${p.id})">✏️</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteParticipant(${p.id})">✕</button>
+    </div>`).join('');
+}
+
+function renderMatches() {
+  const el = document.getElementById('matches-list');
+  const ms = activeTorneo.matches;
+  if (!ms.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem">Sin partidos cargados.</div>'; return; }
+  el.innerHTML = ms.map(m => `
+    <div class="match-row">
+      <div class="mr-players">${m.player1_name || '?'} <span style="opacity:0.4">vs</span> ${m.player2_name || '?'}</div>
+      <div class="mr-meta">
+        <span>${m.round_name}</span>
+        ${m.match_date ? `<span>${fmtD(m.match_date)}${m.match_time ? ' ' + m.match_time : ''}</span>` : ''}
+        ${m.status === 'played' ? `<span class="match-score">${m.score1||''} — ${m.score2||''}</span>` : '<span style="opacity:0.5">Pendiente</span>'}
+        <button class="btn btn-outline btn-sm" onclick="editMatch(${m.id})">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMatch(${m.id})">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+// Modales Torneo
+function openTorneoModal(id = null) {
+  const t = id ? torneos.find(x => x.id === id) : null;
+  document.getElementById('torneo-modal-title').textContent = t ? 'Editar torneo' : 'Nuevo torneo';
+  document.getElementById('tm-id').value = t?.id || '';
+  document.getElementById('tm-name').value = t?.name || '';
+  document.getElementById('tm-desc').value = t?.description || '';
+  document.getElementById('tm-start').value = t?.start_date || '';
+  document.getElementById('tm-end').value = t?.end_date || '';
+  document.getElementById('tm-status').value = t?.status || 'upcoming';
+  document.getElementById('torneoModal').classList.add('open');
+}
+function closeTorneoModal() { document.getElementById('torneoModal').classList.remove('open'); }
+function openEditTorneo() { openTorneoModal(activeTorneo?.id); }
+
+async function saveTorneo() {
+  const id = document.getElementById('tm-id').value;
+  const body = { name: document.getElementById('tm-name').value.trim(), description: document.getElementById('tm-desc').value.trim(), start_date: document.getElementById('tm-start').value, end_date: document.getElementById('tm-end').value, status: document.getElementById('tm-status').value };
+  if (!body.name) { showToast('Nombre requerido', 'error'); return; }
+  const url = id ? `/api/super/tournaments/${id}` : '/api/super/tournaments';
+  const res = await fetch(url, { method: id ? 'PUT' : 'POST', headers: authHJ(), body: JSON.stringify(body) });
+  if (!res.ok) { showToast('Error al guardar', 'error'); return; }
+  closeTorneoModal();
+  showToast(id ? 'Torneo actualizado' : 'Torneo creado', 'success');
+  if (activeTorneo) { const d = await fetch(`/api/tournaments/${activeTorneo.id}`).then(r => r.json()); activeTorneo = d; document.getElementById('detail-title').textContent = d.name; }
+  else loadTorneos();
+}
+
+async function deleteTorneo(id, name) {
+  if (!confirm(`¿Eliminar el torneo "${name}"?`)) return;
+  await fetch(`/api/super/tournaments/${id}`, { method: 'DELETE', headers: authH() });
+  showToast('Torneo eliminado');
+  loadTorneos();
+}
+
+// Modales Participante
+function openAddParticipant() { clearParticipantModal(); document.getElementById('participantModal').classList.add('open'); }
+function closeParticipantModal() { document.getElementById('participantModal').classList.remove('open'); }
+function clearParticipantModal() { ['pm-pid','pm-name','pm-partner','pm-wa'].forEach(id => document.getElementById(id).value = ''); document.getElementById('pm-pts').value = 0; document.getElementById('pm-wins').value = 0; document.getElementById('pm-losses').value = 0; document.getElementById('pm-pos').value = ''; }
+
+function editParticipant(pid) {
+  const p = activeTorneo.participants.find(x => x.id === pid);
+  if (!p) return;
+  document.getElementById('pm-pid').value = p.id;
+  document.getElementById('pm-name').value = p.name;
+  document.getElementById('pm-partner').value = p.partner_name || '';
+  document.getElementById('pm-wa').value = p.whatsapp || '';
+  document.getElementById('pm-pts').value = p.points;
+  document.getElementById('pm-wins').value = p.wins;
+  document.getElementById('pm-losses').value = p.losses;
+  document.getElementById('pm-pos').value = p.position || '';
+  document.getElementById('participantModal').classList.add('open');
+}
+
+async function saveParticipant() {
+  const pid = document.getElementById('pm-pid').value;
+  const body = { name: document.getElementById('pm-name').value.trim(), partner_name: document.getElementById('pm-partner').value.trim() || null, whatsapp: document.getElementById('pm-wa').value.trim() || null, points: parseInt(document.getElementById('pm-pts').value) || 0, wins: parseInt(document.getElementById('pm-wins').value) || 0, losses: parseInt(document.getElementById('pm-losses').value) || 0, position: parseInt(document.getElementById('pm-pos').value) || null };
+  if (!body.name) { showToast('Nombre requerido', 'error'); return; }
+  const url = pid ? `/api/super/tournaments/${activeTorneo.id}/participants/${pid}` : `/api/super/tournaments/${activeTorneo.id}/participants`;
+  const res = await fetch(url, { method: pid ? 'PUT' : 'POST', headers: authHJ(), body: JSON.stringify(body) });
+  if (!res.ok) { showToast('Error al guardar', 'error'); return; }
+  closeParticipantModal();
+  showToast('Guardado', 'success');
+  activeTorneo = await fetch(`/api/tournaments/${activeTorneo.id}`).then(r => r.json());
+  renderParticipants();
+}
+
+async function deleteParticipant(pid) {
+  if (!confirm('¿Eliminar este participante?')) return;
+  await fetch(`/api/super/tournaments/${activeTorneo.id}/participants/${pid}`, { method: 'DELETE', headers: authH() });
+  activeTorneo = await fetch(`/api/tournaments/${activeTorneo.id}`).then(r => r.json());
+  renderParticipants();
+  showToast('Participante eliminado');
+}
+
+// Modales Partido
+function openAddMatch() { clearMatchModal(); document.getElementById('matchModal').classList.add('open'); }
+function closeMatchModal() { document.getElementById('matchModal').classList.remove('open'); }
+function clearMatchModal() { document.getElementById('mm-id').value = ''; document.getElementById('mm-p1').value = ''; document.getElementById('mm-p2').value = ''; document.getElementById('mm-s1').value = ''; document.getElementById('mm-s2').value = ''; document.getElementById('mm-date').value = ''; document.getElementById('mm-time').value = ''; document.getElementById('mm-round').value = 'Fase de grupos'; document.getElementById('mm-status').value = 'pending'; }
+
+function editMatch(mid) {
+  const m = activeTorneo.matches.find(x => x.id === mid);
+  if (!m) return;
+  document.getElementById('mm-id').value = m.id;
+  document.getElementById('mm-p1').value = m.player1_name || '';
+  document.getElementById('mm-p2').value = m.player2_name || '';
+  document.getElementById('mm-s1').value = m.score1 || '';
+  document.getElementById('mm-s2').value = m.score2 || '';
+  document.getElementById('mm-date').value = m.match_date || '';
+  document.getElementById('mm-time').value = m.match_time || '';
+  document.getElementById('mm-round').value = m.round_name || 'Fase de grupos';
+  document.getElementById('mm-status').value = m.status || 'pending';
+  document.getElementById('matchModal').classList.add('open');
+}
+
+async function saveMatch() {
+  const id = document.getElementById('mm-id').value;
+  const body = { round_name: document.getElementById('mm-round').value, player1_name: document.getElementById('mm-p1').value.trim(), player2_name: document.getElementById('mm-p2').value.trim(), score1: document.getElementById('mm-s1').value.trim() || null, score2: document.getElementById('mm-s2').value.trim() || null, match_date: document.getElementById('mm-date').value || null, match_time: document.getElementById('mm-time').value || null, status: document.getElementById('mm-status').value };
+  if (!body.player1_name || !body.player2_name) { showToast('Los dos jugadores son requeridos', 'error'); return; }
+  const url = id ? `/api/super/tournaments/${activeTorneo.id}/matches/${id}` : `/api/super/tournaments/${activeTorneo.id}/matches`;
+  const res = await fetch(url, { method: id ? 'PUT' : 'POST', headers: authHJ(), body: JSON.stringify(body) });
+  if (!res.ok) { showToast('Error al guardar', 'error'); return; }
+  closeMatchModal();
+  showToast('Partido guardado', 'success');
+  activeTorneo = await fetch(`/api/tournaments/${activeTorneo.id}`).then(r => r.json());
+  renderMatches();
+}
+
+async function deleteMatch(mid) {
+  if (!confirm('¿Eliminar este partido?')) return;
+  await fetch(`/api/super/tournaments/${activeTorneo.id}/matches/${mid}`, { method: 'DELETE', headers: authH() });
+  activeTorneo = await fetch(`/api/tournaments/${activeTorneo.id}`).then(r => r.json());
+  renderMatches();
+  showToast('Partido eliminado');
 }
 
 init();

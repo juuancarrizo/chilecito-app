@@ -109,6 +109,44 @@ db.exec(`
     venue_id INTEGER REFERENCES venues(id) ON DELETE CASCADE,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS tournaments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    sport TEXT DEFAULT 'padel',
+    description TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    status TEXT DEFAULT 'upcoming',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS tournament_participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    partner_name TEXT,
+    whatsapp TEXT,
+    points INTEGER DEFAULT 0,
+    wins INTEGER DEFAULT 0,
+    losses INTEGER DEFAULT 0,
+    position INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS tournament_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    round_name TEXT DEFAULT 'Fase de grupos',
+    player1_id INTEGER REFERENCES tournament_participants(id) ON DELETE SET NULL,
+    player2_id INTEGER REFERENCES tournament_participants(id) ON DELETE SET NULL,
+    player1_name TEXT,
+    player2_name TEXT,
+    score1 TEXT,
+    score2 TEXT,
+    match_date TEXT,
+    match_time TEXT,
+    status TEXT DEFAULT 'pending'
+  );
 `);
 
 // Migraciones para tablas que pueden ya existir
@@ -521,9 +559,108 @@ app.get('/api/super/metrics', requireSuper, (req, res) => {
   res.json({ searchesBySport, searchesByDay, searchesByHour, topVenues, totalSearches, totalViews, totalVenues, totalCourts, days: parseInt(days) });
 });
 
+// ── PÚBLICO — TORNEOS ─────────────────────────────────────────
+
+app.get('/api/tournaments', (req, res) => {
+  const { sport = 'padel' } = req.query;
+  const tournaments = db.prepare(`
+    SELECT * FROM tournaments WHERE sport = ? AND status IN ('upcoming','active')
+    ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, start_date
+  `).all(sport);
+  for (const t of tournaments) {
+    t.participants = db.prepare('SELECT * FROM tournament_participants WHERE tournament_id = ? ORDER BY position, points DESC, name').all(t.id);
+    t.matches = db.prepare('SELECT * FROM tournament_matches WHERE tournament_id = ? ORDER BY match_date, match_time').all(t.id);
+  }
+  res.json(tournaments);
+});
+
+app.get('/api/tournaments/:id', (req, res) => {
+  const t = db.prepare('SELECT * FROM tournaments WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+  t.participants = db.prepare('SELECT * FROM tournament_participants WHERE tournament_id = ? ORDER BY position, points DESC, name').all(t.id);
+  t.matches = db.prepare('SELECT * FROM tournament_matches WHERE tournament_id = ? ORDER BY match_date, match_time').all(t.id);
+  res.json(t);
+});
+
+// ── SUPER ADMIN — TORNEOS ─────────────────────────────────────
+
+app.get('/api/super/tournaments', requireSuper, (req, res) => {
+  const list = db.prepare('SELECT * FROM tournaments ORDER BY created_at DESC').all();
+  for (const t of list) {
+    t.participants_count = db.prepare('SELECT COUNT(*) as c FROM tournament_participants WHERE tournament_id = ?').get(t.id).c;
+    t.matches_count = db.prepare('SELECT COUNT(*) as c FROM tournament_matches WHERE tournament_id = ?').get(t.id).c;
+  }
+  res.json(list);
+});
+
+app.post('/api/super/tournaments', requireSuper, (req, res) => {
+  const { name, sport = 'padel', description, start_date, end_date, status = 'upcoming' } = req.body;
+  if (!name) return res.status(400).json({ error: 'Nombre requerido' });
+  const r = db.prepare('INSERT INTO tournaments (name, sport, description, start_date, end_date, status) VALUES (?,?,?,?,?,?)').run(name, sport, description, start_date, end_date, status);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.put('/api/super/tournaments/:id', requireSuper, (req, res) => {
+  const t = db.prepare('SELECT * FROM tournaments WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+  const { name, description, start_date, end_date, status } = req.body;
+  db.prepare('UPDATE tournaments SET name=?,description=?,start_date=?,end_date=?,status=? WHERE id=?')
+    .run(name ?? t.name, description ?? t.description, start_date ?? t.start_date, end_date ?? t.end_date, status ?? t.status, t.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/super/tournaments/:id', requireSuper, (req, res) => {
+  db.prepare('DELETE FROM tournaments WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Participantes
+app.post('/api/super/tournaments/:id/participants', requireSuper, (req, res) => {
+  const { name, partner_name, whatsapp } = req.body;
+  if (!name) return res.status(400).json({ error: 'Nombre requerido' });
+  const r = db.prepare('INSERT INTO tournament_participants (tournament_id, name, partner_name, whatsapp) VALUES (?,?,?,?)').run(req.params.id, name, partner_name, whatsapp);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.put('/api/super/tournaments/:id/participants/:pid', requireSuper, (req, res) => {
+  const p = db.prepare('SELECT * FROM tournament_participants WHERE id = ? AND tournament_id = ?').get(req.params.pid, req.params.id);
+  if (!p) return res.status(404).json({ error: 'Participante no encontrado' });
+  const { name, partner_name, whatsapp, points, wins, losses, position } = req.body;
+  db.prepare('UPDATE tournament_participants SET name=?,partner_name=?,whatsapp=?,points=?,wins=?,losses=?,position=? WHERE id=?')
+    .run(name ?? p.name, partner_name ?? p.partner_name, whatsapp ?? p.whatsapp, points ?? p.points, wins ?? p.wins, losses ?? p.losses, position ?? p.position, p.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/super/tournaments/:id/participants/:pid', requireSuper, (req, res) => {
+  db.prepare('DELETE FROM tournament_participants WHERE id = ? AND tournament_id = ?').run(req.params.pid, req.params.id);
+  res.json({ ok: true });
+});
+
+// Partidos
+app.post('/api/super/tournaments/:id/matches', requireSuper, (req, res) => {
+  const { round_name, player1_id, player2_id, player1_name, player2_name, score1, score2, match_date, match_time, status } = req.body;
+  const r = db.prepare('INSERT INTO tournament_matches (tournament_id, round_name, player1_id, player2_id, player1_name, player2_name, score1, score2, match_date, match_time, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(req.params.id, round_name || 'Fase de grupos', player1_id || null, player2_id || null, player1_name, player2_name, score1, score2, match_date, match_time, status || 'pending');
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.put('/api/super/tournaments/:id/matches/:mid', requireSuper, (req, res) => {
+  const m = db.prepare('SELECT * FROM tournament_matches WHERE id = ? AND tournament_id = ?').get(req.params.mid, req.params.id);
+  if (!m) return res.status(404).json({ error: 'Partido no encontrado' });
+  const { round_name, player1_name, player2_name, score1, score2, match_date, match_time, status } = req.body;
+  db.prepare('UPDATE tournament_matches SET round_name=?,player1_name=?,player2_name=?,score1=?,score2=?,match_date=?,match_time=?,status=? WHERE id=?')
+    .run(round_name ?? m.round_name, player1_name ?? m.player1_name, player2_name ?? m.player2_name, score1 ?? m.score1, score2 ?? m.score2, match_date ?? m.match_date, match_time ?? m.match_time, status ?? m.status, m.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/super/tournaments/:id/matches/:mid', requireSuper, (req, res) => {
+  db.prepare('DELETE FROM tournament_matches WHERE id = ? AND tournament_id = ?').run(req.params.mid, req.params.id);
+  res.json({ ok: true });
+});
+
 // ── RUTAS FRONTEND ────────────────────────────────────────────
 
 app.get('/complejo/:slug', (req, res) => res.sendFile(path.join(__dirname, '../frontend/complejo.html')));
 app.get('/superadmin', (req, res) => res.sendFile(path.join(__dirname, '../frontend/superadmin.html')));
+app.get('/superadmin/torneos', (req, res) => res.sendFile(path.join(__dirname, '../frontend/superadmin.html')));
 
 app.listen(PORT, () => console.log(`Cancha Libre corriendo en http://localhost:${PORT}`));

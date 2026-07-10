@@ -22,7 +22,7 @@
     <a href="/">Chilecito <span style="color:var(--accent2)">Deportes</span></a>
   </div>
   <div class="nav-links">
-    <a href="/">← Volver</a>
+    <a href="/" onclick="if(history.length>1&&document.referrer){event.preventDefault();history.back()}">← Volver</a>
   </div>
 </nav>
 
