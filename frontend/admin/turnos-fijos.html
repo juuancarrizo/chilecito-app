@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turnos Fijos — Admin</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .day-block { background:white; border-radius:16px; box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden; }
+    .day-header {
+      display:flex; align-items:center; gap:14px; padding:16px 20px;
+      background:linear-gradient(135deg,#fdf4ff,#f5e6ff);
+      border-bottom:1px solid #e9d5ff;
+    }
+    .day-name { font-size:1.1rem; font-weight:900; color:#7c3aed; }
+    .day-count { font-size:0.78rem; font-weight:700; color:#a855f7; background:white; padding:3px 10px; border-radius:20px; }
+    .slot-row { display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid var(--border); }
+    .slot-row:last-child { border-bottom:none; }
+    .slot-time { font-size:1rem; font-weight:900; color:#7c3aed; min-width:110px; }
+    .slot-court { font-size:0.85rem; font-weight:700; color:var(--text); min-width:130px; }
+    .slot-person { flex:1; }
+    .slot-person .pname { font-size:0.88rem; font-weight:700; }
+    .slot-person .pwa   { font-size:0.8rem; color:#25D366; font-weight:700; text-decoration:none; }
+    .slot-person .no-person { font-size:0.82rem; color:var(--text-muted); font-style:italic; }
+    .slot-actions { display:flex; gap:6px; }
+    .empty-day { padding:20px; color:var(--text-muted); font-size:0.85rem; text-align:center; }
+
+    /* Modal editar */
+    .edit-modal { background:white; border-radius:18px; padding:26px; width:100%; max-width:400px; }
+    .edit-modal h3 { font-size:1rem; font-weight:900; margin-bottom:4px; }
+    .edit-modal .ctx { font-size:0.82rem; color:var(--text-muted); margin-bottom:20px; }
+    .qsec { font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:7px; }
+    .person-inputs { display:flex; gap:8px; margin-bottom:16px; }
+    .person-inputs input { flex:1; padding:9px 11px; border:1.5px solid var(--border); border-radius:8px; font-size:0.88rem; }
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-brand"><div class="dot"></div>Cancha<span style="color:var(--accent2)">Libre</span> — Admin</div>
+  <div class="nav-links"><a href="/" target="_blank">Ver sitio ↗</a><a href="#" onclick="logout()">Salir</a></div>
+</nav>
+<div class="admin-layout">
+  <div class="sidebar">
+    <div class="sidebar-label">Mi complejo</div>
+    <a href="/admin/">🏠 Dashboard</a>
+    <a href="/admin/canchas.html">🎾 Canchas</a>
+    <a href="/admin/horarios.html">📅 Horarios</a>
+    <a href="/admin/turnos-fijos.html" class="active">🔄 Turnos fijos</a>
+    <a href="/admin/config.html">⚙️ Configuración</a>
+    <div class="sidebar-label">Cuenta</div>
+    <a href="/" target="_blank">👁️ Ver sitio</a>
+    <a href="#" onclick="logout()">🚪 Salir</a>
+  </div>
+  <div class="admin-content">
+    <div class="page-header">
+      <h2>🔄 Turnos fijos semanales</h2>
+      <button class="btn btn-primary" onclick="openAddModal()">+ Nuevo turno fijo</button>
+    </div>
+    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:24px">
+      Se bloquean automáticamente cada semana en el mismo horario. Aparecen en morado en el calendario.
+    </p>
+    <div id="fijos-list"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+
+<!-- MODAL AGREGAR / EDITAR -->
+<div class="modal-overlay" id="editModal">
+  <div class="edit-modal">
+    <h3 id="em-title">Nuevo turno fijo</h3>
+    <div class="ctx" id="em-ctx">Se repetirá cada semana automáticamente.</div>
+    <input type="hidden" id="em-id">
+
+    <div class="qsec">Cancha</div>
+    <select id="em-court" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:0.9rem;margin-bottom:14px"></select>
+
+    <div class="qsec">Día de la semana</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:14px" id="em-days">
+      <button class="btn btn-outline btn-sm" style="padding:8px 4px;font-size:0.8rem" onclick="selDay(0,this)">Dom</button>
+      <button class="btn btn-outline btn-sm" style="padding:8px 4px;font-size:0.8rem" onclick="selDay(1,this)">Lun</button>
+      <button class="btn btn-outline btn-sm" style="padding:8px 4px;font-size:0.8rem" onclick="selDay(2,this)">Mar</button>
+      <button class="btn btn-outline btn-sm" style="padding:8px 4px;font-size:0.8rem" onclick="selDay(3,this)">Mié</button>
+      <button class="btn btn-outline btn-sm" style="padding:8px 4px;font-size:0.8rem" onclick="selDay(4,this)">Jue</button>
+      <button class="btn btn-outline btn-sm" style="padding:8px 4px;font-size:0.8rem" onclick="selDay(5,this)">Vie</button>
+      <button class="btn btn-outline btn-sm" style="padding:8px 4px;font-size:0.8rem" onclick="selDay(6,this)">Sáb</button>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <div style="flex:1">
+        <div class="qsec">Hora inicio</div>
+        <select id="em-start" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:0.9rem"></select>
+      </div>
+      <div style="flex:1">
+        <div class="qsec">Hora fin</div>
+        <select id="em-end" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:0.9rem"></select>
+      </div>
+    </div>
+
+    <div class="qsec">Datos del cliente</div>
+    <div class="person-inputs">
+      <input type="text" id="em-name" placeholder="Nombre y apellido">
+      <input type="text" id="em-wa"   placeholder="WhatsApp (sin +)">
+    </div>
+
+    <div id="em-error" style="display:none;background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:11px 14px;margin-bottom:12px;color:#dc2626;font-size:0.85rem;font-weight:700">
+      ⚠️ <span id="em-error-text"></span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeEditModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveSlot()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('token');
+if (!token) window.location = '/login.html';
+
+const SPORT_LABELS = { padel:'Pádel', futbol5:'Fútbol 5', futbol7:'Fútbol 7', futbol11:'Fútbol 11', hockey:'Hockey', tenis:'Tenis' };
+const DAYS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DAYS_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+let courts = [];
+let slots  = [];
+let emDay  = null;
+let editingId = null;
+
+const authH  = () => ({ 'x-session-token': token });
+const authHJ = () => ({ 'x-session-token': token, 'Content-Type': 'application/json' });
+
+function showToast(msg, type='') { const t=document.getElementById('toast'); t.textContent=msg; t.className=`toast ${type} show`; setTimeout(()=>t.className='toast',2800); }
+function showError(msg) {
+  const el = document.getElementById('em-error');
+  document.getElementById('em-error-text').textContent = msg;
+  el.style.display = 'block';
+}
+async function logout() { await fetch('/api/auth/logout',{method:'POST',headers:authH()}); localStorage.removeItem('token'); window.location='/login.html'; }
+
+async function init() {
+  const res = await fetch('/api/auth/me', { headers: authH() });
+  if (!res.ok) { localStorage.removeItem('token'); window.location='/login.html'; return; }
+  const me = await res.json();
+  if (!me.venue) { window.location='/admin/'; return; }
+  courts = await fetch('/api/admin/courts', { headers: authH() }).then(r => r.json());
+  load();
+}
+
+async function load() {
+  slots = await fetch('/api/admin/recurring', { headers: authH() }).then(r => r.json());
+  render();
+}
+
+function render() {
+  const el = document.getElementById('fijos-list');
+  if (!slots.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">🔄</div><h3>Sin turnos fijos</h3><p>Agregá tu primer turno fijo con el botón de arriba.</p></div>';
+    return;
+  }
+
+  // Agrupar por día de la semana, en orden (Lun→Dom)
+  const ORDER = [1,2,3,4,5,6,0]; // Lun primero
+  const byDay = {};
+  for (const s of slots) {
+    if (!byDay[s.day_of_week]) byDay[s.day_of_week] = [];
+    byDay[s.day_of_week].push(s);
+  }
+  // Ordenar slots dentro de cada día por hora inicio
+  for (const d in byDay) byDay[d].sort((a,b) => a.start_time.localeCompare(b.start_time));
+
+  const activeDays = ORDER.filter(d => byDay[d]);
+
+  el.innerHTML = activeDays.map(dow => {
+    const daySlots = byDay[dow];
+    return `
+      <div class="day-block">
+        <div class="day-header">
+          <span class="day-name">${DAYS[dow]}</span>
+          <span class="day-count">${daySlots.length} turno${daySlots.length !== 1 ? 's' : ''}</span>
+        </div>
+        ${daySlots.map(s => `
+          <div class="slot-row">
+            <div class="slot-time">${s.start_time} – ${s.end_time}</div>
+            <div class="slot-court">🎾 ${s.court_name}</div>
+            <div class="slot-person">
+              ${s.person_name
+                ? `<div class="pname">👤 ${s.person_name}</div>
+                   ${s.person_whatsapp ? `<a class="pwa" href="https://wa.me/${s.person_whatsapp.replace(/\D/g,'')}" target="_blank">💬 ${s.person_whatsapp}</a>` : ''}`
+                : `<div class="no-person">Sin datos del cliente</div>`}
+            </div>
+            <div class="slot-actions">
+              <button class="btn btn-outline btn-sm" onclick="openEditModal(${s.id})">✏️ Editar</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteSlot(${s.id},'${DAYS[dow]}','${s.start_time}')">✕</button>
+            </div>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+}
+
+// ── Tiempo ─────────────────────────────────────────────────────
+function buildTimeOpts(selId, selected='') {
+  const sel = document.getElementById(selId); sel.innerHTML = '';
+  for (let h=6; h<=23; h++) for (const m of [0,30]) {
+    const v = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    const o = document.createElement('option'); o.value=v; o.textContent=v;
+    if (v===selected) o.selected=true; sel.appendChild(o);
+  }
+}
+
+function selDay(day, btn) {
+  emDay = day;
+  document.querySelectorAll('#em-days button').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-outline'); });
+  btn.classList.remove('btn-outline'); btn.classList.add('btn-primary');
+}
+
+// ── Modal agregar ──────────────────────────────────────────────
+function openAddModal() {
+  editingId = null; emDay = null;
+  document.getElementById('em-error').style.display = 'none';
+  document.getElementById('em-title').textContent = 'Nuevo turno fijo';
+  document.getElementById('em-ctx').textContent = 'Se repetirá cada semana automáticamente.';
+  document.getElementById('em-id').value = '';
+  document.getElementById('em-name').value = '';
+  document.getElementById('em-wa').value = '';
+  document.querySelectorAll('#em-days button').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-outline'); });
+  const sel = document.getElementById('em-court');
+  sel.innerHTML = courts.map(c => `<option value="${c.id}">${c.name} (${SPORT_LABELS[c.sport]||c.sport})</option>`).join('');
+  buildTimeOpts('em-start','20:00'); buildTimeOpts('em-end','22:00');
+  document.getElementById('editModal').classList.add('open');
+}
+
+function openEditModal(id) {
+  const s = slots.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('em-error').style.display = 'none';
+  editingId = id; emDay = s.day_of_week;
+  document.getElementById('em-title').textContent = 'Editar turno fijo';
+  document.getElementById('em-ctx').textContent = `${DAYS[s.day_of_week]} · ${s.start_time}–${s.end_time}`;
+  document.getElementById('em-id').value = id;
+  document.getElementById('em-name').value = s.person_name || '';
+  document.getElementById('em-wa').value   = s.person_whatsapp || '';
+  // Día activo
+  document.querySelectorAll('#em-days button').forEach((b, i) => {
+    const days = [0,1,2,3,4,5,6];
+    const isActive = days[i] === s.day_of_week;
+    b.classList.toggle('btn-primary', isActive);
+    b.classList.toggle('btn-outline', !isActive);
+  });
+  const sel = document.getElementById('em-court');
+  sel.innerHTML = courts.map(c => `<option value="${c.id}" ${c.id===s.court_id?'selected':''}>${c.name} (${SPORT_LABELS[c.sport]||c.sport})</option>`).join('');
+  buildTimeOpts('em-start', s.start_time);
+  buildTimeOpts('em-end', s.end_time);
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); }
+
+async function saveSlot() {
+  const id      = document.getElementById('em-id').value;
+  const court_id   = document.getElementById('em-court').value;
+  const start_time = document.getElementById('em-start').value;
+  const end_time   = document.getElementById('em-end').value;
+  const person_name     = document.getElementById('em-name').value.trim();
+  const person_whatsapp = document.getElementById('em-wa').value.trim();
+
+  if (start_time >= end_time) { showError('Hora inicio debe ser menor a hora fin'); return; }
+  if (!person_name)     { showError('El nombre del cliente es obligatorio'); return; }
+  if (!person_whatsapp) { showError('El WhatsApp del cliente es obligatorio'); return; }
+
+  if (id) {
+    // Editar
+    const res = await fetch(`/api/admin/recurring/${id}`, {
+      method:'PUT', headers:authHJ(),
+      body:JSON.stringify({ start_time, end_time, person_name, person_whatsapp })
+    });
+    if (!res.ok) { showToast('Error al guardar','error'); return; }
+    showToast('Turno fijo actualizado','success');
+  } else {
+    // Nuevo
+    if (emDay === null) { showToast('Seleccioná el día','error'); return; }
+    const res = await fetch('/api/admin/recurring', {
+      method:'POST', headers:authHJ(),
+      body:JSON.stringify({ court_id, day_of_week:emDay, start_time, end_time, label:'Turno fijo', person_name, person_whatsapp })
+    });
+    if (!res.ok) { const d=await res.json(); showError(d.error||'Error al guardar'); return; }
+    showToast('Turno fijo creado','success');
+  }
+  closeEditModal(); load();
+}
+
+async function deleteSlot(id, day, time) {
+  if (!confirm(`¿Eliminar el turno fijo del ${day} a las ${time}? Desaparecerá de todas las semanas.`)) return;
+  await fetch(`/api/admin/recurring/${id}`, { method:'DELETE', headers:authH() });
+  showToast('Turno fijo eliminado'); load();
+}
+
+init();
+</script>
+</body>
+</html>

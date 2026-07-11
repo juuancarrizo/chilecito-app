@@ -77,6 +77,7 @@
     <div class="tab active" onclick="switchTab('metrics')">📊 Métricas</div>
     <div class="tab" onclick="switchTab('sports')">🎾 Deportes</div>
     <div class="tab" onclick="switchTab('torneos')">🏆 Torneos</div>
+    <div class="tab" onclick="switchTab('clubes')">🏟️ Clubes</div>
   </div>
 
   <!-- MÉTRICAS -->
@@ -120,6 +121,15 @@
     <div id="sports-list"></div>
   </div>
 
+  <!-- CLUBES -->
+  <div class="tab-panel" id="tab-clubes">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <p style="color:var(--text-muted);font-size:0.9rem">Gestioná los accesos de cada club/predio.</p>
+      <button class="btn btn-primary" onclick="openClubModal()">+ Nuevo club</button>
+    </div>
+    <div id="clubes-list"></div>
+  </div>
+
   <!-- TORNEOS -->
   <div class="tab-panel" id="tab-torneos">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
@@ -159,6 +169,31 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL CLUB -->
+<div class="modal-overlay" id="clubModal">
+  <div class="modal">
+    <h2 id="club-modal-title">Nuevo club</h2>
+    <input type="hidden" id="cm-id">
+    <div class="form-group">
+      <label>Nombre del club *</label>
+      <input type="text" id="cm-name" placeholder="Club Pádel Chilecito">
+    </div>
+    <div class="form-group">
+      <label>Usuario (para iniciar sesión) *</label>
+      <input type="text" id="cm-user" placeholder="cancha1">
+    </div>
+    <div class="form-group">
+      <label id="cm-pass-label">Contraseña *</label>
+      <input type="text" id="cm-pass" placeholder="cancha1">
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px" id="cm-pass-hint"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeClubModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveClub()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL TORNEO -->
 <div class="modal-overlay" id="torneoModal">
@@ -326,11 +361,12 @@ async function init() {
 }
 
 function switchTab(tab) {
-  const tabs = ['metrics','sports','torneos'];
+  const tabs = ['metrics','sports','torneos','clubes'];
   document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', tabs[i] === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById(`tab-${tab}`).classList.add('active');
   if (tab === 'torneos') loadTorneos();
+  if (tab === 'clubes')  loadClubes();
 }
 
 function setDays(days, btn) {
@@ -480,6 +516,73 @@ async function deleteSport(id, label) {
   if (!confirm(`¿Eliminar el deporte "${label}"? Las canchas con ese deporte quedarán sin categoría.`)) return;
   await fetch(`/api/super/sports/${id}`, { method: 'DELETE', headers: authH() });
   showToast('Deporte eliminado'); loadSports();
+}
+
+// ── CLUBES ────────────────────────────────────────────────────
+async function loadClubes() {
+  const list = await fetch('/api/super/owners', { headers: authH() }).then(r => r.json());
+  const el = document.getElementById('clubes-list');
+  if (!list.length) { el.innerHTML = '<div style="color:var(--text-muted);padding:20px 0">Sin clubes registrados aún.</div>'; return; }
+  el.innerHTML = list.map(o => `
+    <div class="torneo-card">
+      <div class="tc-info">
+        <div class="tc-name">🏟️ ${o.name}</div>
+        <div class="tc-meta">
+          Usuario: <strong>${o.email}</strong>
+          ${o.venue ? ` · Predio: <strong>${o.venue.name}</strong> (${o.venue.city}) · <span class="badge ${o.venue.active ? 'badge-green' : 'badge-gray'}">${o.venue.active ? 'Activo' : 'Inactivo'}</span>` : ' · <span style="color:var(--text-muted)">Sin predio configurado</span>'}
+        </div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="editClub(${o.id},'${o.name.replace(/'/g,'')}','${o.email}')">✏️ Editar</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteClub(${o.id},'${o.name.replace(/'/g,'')}')">🗑️</button>
+    </div>`).join('');
+}
+
+function openClubModal() {
+  document.getElementById('club-modal-title').textContent = 'Nuevo club';
+  document.getElementById('cm-id').value = '';
+  document.getElementById('cm-name').value = '';
+  document.getElementById('cm-user').value = '';
+  document.getElementById('cm-pass').value = '';
+  document.getElementById('cm-pass-label').textContent = 'Contraseña *';
+  document.getElementById('cm-pass-hint').textContent = '';
+  document.getElementById('clubModal').classList.add('open');
+}
+function closeClubModal() { document.getElementById('clubModal').classList.remove('open'); }
+
+function editClub(id, name, user) {
+  document.getElementById('club-modal-title').textContent = 'Editar club';
+  document.getElementById('cm-id').value = id;
+  document.getElementById('cm-name').value = name;
+  document.getElementById('cm-user').value = user;
+  document.getElementById('cm-pass').value = '';
+  document.getElementById('cm-pass-label').textContent = 'Nueva contraseña';
+  document.getElementById('cm-pass-hint').textContent = 'Dejá vacío para no cambiarla';
+  document.getElementById('clubModal').classList.add('open');
+}
+
+async function saveClub() {
+  const id   = document.getElementById('cm-id').value;
+  const name = document.getElementById('cm-name').value.trim();
+  const user = document.getElementById('cm-user').value.trim();
+  const pass = document.getElementById('cm-pass').value.trim();
+  if (!name || !user) { showToast('Nombre y usuario son requeridos', 'error'); return; }
+  if (!id && !pass)   { showToast('La contraseña es requerida', 'error'); return; }
+  const body = { name, username: user };
+  if (pass) body.password = pass;
+  const url = id ? `/api/super/owners/${id}` : '/api/super/owners';
+  const res = await fetch(url, { method: id ? 'PUT' : 'POST', headers: authHJ(), body: JSON.stringify(body) });
+  if (!res.ok) { const d = await res.json(); showToast(d.error, 'error'); return; }
+  closeClubModal();
+  showToast(id ? 'Club actualizado' : 'Club creado', 'success');
+  loadClubes();
+}
+
+async function deleteClub(id, name) {
+  if (!confirm(`¿Eliminar el club "${name}"? Se eliminará el usuario y su acceso al panel.`)) return;
+  const res = await fetch(`/api/super/owners/${id}`, { method: 'DELETE', headers: authH() });
+  if (!res.ok) { showToast('Error al eliminar', 'error'); return; }
+  showToast('Club eliminado');
+  loadClubes();
 }
 
 // ── TORNEOS ───────────────────────────────────────────────────

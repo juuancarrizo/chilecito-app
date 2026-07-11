@@ -94,6 +94,26 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS recurring_exceptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recurring_id INTEGER NOT NULL REFERENCES recurring_slots(id) ON DELETE CASCADE,
+    exception_date TEXT NOT NULL,
+    UNIQUE(recurring_id, exception_date)
+  );
+
+  CREATE TABLE IF NOT EXISTS recurring_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    court_id INTEGER NOT NULL REFERENCES courts(id) ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    label TEXT DEFAULT 'Turno fijo',
+    person_name TEXT,
+    person_whatsapp TEXT,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS search_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sport TEXT,
@@ -152,6 +172,8 @@ db.exec(`
 // Migraciones para tablas que pueden ya existir
 try { db.exec(`ALTER TABLE owners ADD COLUMN is_superadmin INTEGER DEFAULT 0`); } catch {}
 try { db.exec(`ALTER TABLE venues ADD COLUMN city TEXT DEFAULT 'Chilecito'`); } catch {}
+try { db.exec(`ALTER TABLE occupied_slots ADD COLUMN person_name TEXT`); } catch {}
+try { db.exec(`ALTER TABLE occupied_slots ADD COLUMN person_whatsapp TEXT`); } catch {}
 
 // Seed deportes si la tabla está vacía
 const sportsCount = db.prepare('SELECT COUNT(*) as c FROM sports').get().c;
@@ -301,8 +323,15 @@ app.get('/api/search', (req, res) => {
       SELECT 1 FROM occupied_slots os
       WHERE os.court_id = c.id AND os.date = ? AND os.start_time < ? AND os.end_time > ?
     )
+    AND NOT EXISTS (
+      SELECT 1 FROM recurring_slots rs
+      WHERE rs.court_id = c.id AND rs.active = 1
+      AND rs.day_of_week = CAST(strftime('%w', ?) AS INTEGER)
+      AND rs.start_time < ? AND rs.end_time > ?
+      AND NOT EXISTS (SELECT 1 FROM recurring_exceptions re WHERE re.recurring_id = rs.id AND re.exception_date = ?)
+    )
     ORDER BY c.price_per_hour, c.name
-  `).all(...params);
+  `).all(...(city ? [sport, city, date, end_time, start_time, date, end_time, start_time, date] : [sport, date, end_time, start_time, date, end_time, start_time, date]));
 
   // Log de búsqueda
   db.prepare('INSERT INTO search_logs (sport, city, date_searched, time_searched, results_count) VALUES (?,?,?,?,?)')
@@ -322,23 +351,32 @@ app.get('/api/search', (req, res) => {
         SELECT c.id FROM courts c JOIN venues v ON v.id = c.venue_id
         WHERE c.sport = ? AND c.active = 1 AND v.active = 1 ${cityFilter}
         AND NOT EXISTS (SELECT 1 FROM occupied_slots os WHERE os.court_id = c.id AND os.date = ? AND os.start_time < ? AND os.end_time > ?)
+        AND NOT EXISTS (SELECT 1 FROM recurring_slots rs WHERE rs.court_id = c.id AND rs.active = 1 AND rs.day_of_week = CAST(strftime('%w',?) AS INTEGER) AND rs.start_time < ? AND rs.end_time > ? AND NOT EXISTS (SELECT 1 FROM recurring_exceptions re WHERE re.recurring_id=rs.id AND re.exception_date=?))
         LIMIT 5
-      `).all(...(city ? [sport, city, date, eT, sT] : [sport, date, eT, sT]));
+      `).all(...(city ? [sport, city, date, eT, sT, date, eT, sT, date] : [sport, date, eT, sT, date, eT, sT, date]));
       if (courts.length) suggestions.push({ time: sT, delta, count: courts.length });
     }
     suggestions = suggestions.sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta)).slice(0, 4);
   }
 
   // Canchas ocupadas en ese horario (para mostrarlas con otros horarios disponibles)
-  const occupiedParams = city ? [sport, city, date, end_time, start_time] : [sport, date, end_time, start_time];
+  const occupiedParams = city ? [sport, city, date, end_time, start_time, date, end_time, start_time, date] : [sport, date, end_time, start_time, date, end_time, start_time, date];
   const occupied = db.prepare(`
     SELECT c.*, v.name as venue_name, v.slug as venue_slug, v.city as venue_city,
            v.phone as venue_phone, v.whatsapp as venue_whatsapp, v.cover_image as venue_cover
     FROM courts c JOIN venues v ON v.id = c.venue_id
     WHERE c.sport = ? AND c.active = 1 AND v.active = 1 ${cityFilter}
-    AND EXISTS (
-      SELECT 1 FROM occupied_slots os
-      WHERE os.court_id = c.id AND os.date = ? AND os.start_time < ? AND os.end_time > ?
+    AND (
+      EXISTS (
+        SELECT 1 FROM occupied_slots os
+        WHERE os.court_id = c.id AND os.date = ? AND os.start_time < ? AND os.end_time > ?
+      ) OR EXISTS (
+        SELECT 1 FROM recurring_slots rs
+        WHERE rs.court_id = c.id AND rs.active = 1
+        AND rs.day_of_week = CAST(strftime('%w', ?) AS INTEGER)
+        AND rs.start_time < ? AND rs.end_time > ?
+        AND NOT EXISTS (SELECT 1 FROM recurring_exceptions re WHERE re.recurring_id=rs.id AND re.exception_date=?)
+      )
     )
     ORDER BY c.name
   `).all(...occupiedParams);
@@ -483,18 +521,134 @@ app.get('/api/admin/slots', requireAuthAndVenue, (req, res) => {
   res.json(db.prepare(q).all(...params));
 });
 app.post('/api/admin/slots', requireAuthAndVenue, (req, res) => {
-  const { court_id, date, start_time, end_time, label } = req.body;
+  const { court_id, date, start_time, end_time, label, person_name, person_whatsapp } = req.body;
   if (!court_id || !date || !start_time || !end_time) return res.status(400).json({ error: 'Faltan datos' });
   const court = db.prepare('SELECT * FROM courts WHERE id=? AND venue_id=?').get(court_id, req.venue.id);
   if (!court) return res.status(404).json({ error: 'Cancha no encontrada' });
   if (start_time >= end_time) return res.status(400).json({ error: 'Hora inicio debe ser menor a hora fin' });
-  const r = db.prepare('INSERT INTO occupied_slots (court_id, date, start_time, end_time, label) VALUES (?,?,?,?,?)').run(court_id, date, start_time, end_time, label || 'Reservado');
+  if (label === 'Torneo') {
+    // Borra turnos comunes que pisen
+    db.prepare(`DELETE FROM occupied_slots WHERE court_id=? AND date=? AND start_time<? AND end_time>? AND label!='Torneo'`).run(court_id, date, end_time, start_time);
+    // Agrega excepción a turnos fijos que pisen
+    const dow = db.prepare(`SELECT CAST(strftime('%w',?) AS INTEGER) as d`).get(date).d;
+    const conflicting = db.prepare(`SELECT id FROM recurring_slots WHERE court_id=? AND day_of_week=? AND active=1 AND start_time<? AND end_time>?`).all(court_id, dow, end_time, start_time);
+    for (const r of conflicting) db.prepare('INSERT OR IGNORE INTO recurring_exceptions (recurring_id, exception_date) VALUES (?,?)').run(r.id, date);
+  }
+  const r = db.prepare('INSERT INTO occupied_slots (court_id, date, start_time, end_time, label, person_name, person_whatsapp) VALUES (?,?,?,?,?,?,?)').run(court_id, date, start_time, end_time, label || 'Reservado', person_name || null, person_whatsapp || null);
   res.json({ id: r.lastInsertRowid });
 });
+
+// Turnos fijos (recurrentes)
+app.get('/api/admin/recurring', requireAuthAndVenue, (req, res) => {
+  const slots = db.prepare(`
+    SELECT rs.*, c.name as court_name, c.sport FROM recurring_slots rs
+    JOIN courts c ON c.id = rs.court_id
+    WHERE c.venue_id = ? AND rs.active = 1
+    ORDER BY rs.day_of_week, rs.start_time
+  `).all(req.venue.id);
+  res.json(slots);
+});
+app.get('/api/admin/recurring/exceptions', requireAuthAndVenue, (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.json([]);
+  const rows = db.prepare(`
+    SELECT re.recurring_id FROM recurring_exceptions re
+    JOIN recurring_slots rs ON rs.id = re.recurring_id
+    JOIN courts c ON c.id = rs.court_id
+    WHERE re.exception_date = ? AND c.venue_id = ?
+  `).all(date, req.venue.id);
+  res.json(rows.map(r => r.recurring_id));
+});
+
+app.post('/api/admin/recurring', requireAuthAndVenue, (req, res) => {
+  const { court_id, day_of_week, start_time, end_time, label, person_name, person_whatsapp } = req.body;
+  if (!court_id || day_of_week == null || !start_time || !end_time) return res.status(400).json({ error: 'Faltan datos' });
+  const court = db.prepare('SELECT * FROM courts WHERE id=? AND venue_id=?').get(court_id, req.venue.id);
+  if (!court) return res.status(404).json({ error: 'Cancha no encontrada' });
+  if (start_time >= end_time) return res.status(400).json({ error: 'Hora inicio debe ser menor a hora fin' });
+  // Validar que no haya overlap con otro turno fijo
+  const overlap = db.prepare('SELECT id FROM recurring_slots WHERE court_id=? AND day_of_week=? AND active=1 AND start_time<? AND end_time>?').get(court_id, day_of_week, end_time, start_time);
+  if (overlap) return res.status(409).json({ error: 'Ya existe un turno fijo en ese horario para esa cancha' });
+  const r = db.prepare('INSERT INTO recurring_slots (court_id, day_of_week, start_time, end_time, label, person_name, person_whatsapp) VALUES (?,?,?,?,?,?,?)').run(court_id, day_of_week, start_time, end_time, label || 'Turno fijo', person_name || null, person_whatsapp || null);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.post('/api/admin/recurring/:id/free', requireAuthAndVenue, (req, res) => {
+  const { date } = req.body;
+  if (!date) return res.status(400).json({ error: 'Fecha requerida' });
+  const slot = db.prepare(`SELECT rs.* FROM recurring_slots rs JOIN courts c ON c.id=rs.court_id WHERE rs.id=? AND c.venue_id=?`).get(req.params.id, req.venue.id);
+  if (!slot) return res.status(404).json({ error: 'Turno no encontrado' });
+  db.prepare('INSERT OR IGNORE INTO recurring_exceptions (recurring_id, exception_date) VALUES (?,?)').run(slot.id, date);
+  res.json({ ok: true });
+});
+app.put('/api/admin/recurring/:id', requireAuthAndVenue, (req, res) => {
+  const slot = db.prepare(`SELECT rs.* FROM recurring_slots rs JOIN courts c ON c.id=rs.court_id WHERE rs.id=? AND c.venue_id=?`).get(req.params.id, req.venue.id);
+  if (!slot) return res.status(404).json({ error: 'Turno no encontrado' });
+  const { start_time, end_time, person_name, person_whatsapp } = req.body;
+  if (start_time && end_time && start_time >= end_time) return res.status(400).json({ error: 'Hora inicio debe ser menor a hora fin' });
+  db.prepare('UPDATE recurring_slots SET start_time=?,end_time=?,person_name=?,person_whatsapp=? WHERE id=?')
+    .run(start_time||slot.start_time, end_time||slot.end_time, person_name??slot.person_name, person_whatsapp??slot.person_whatsapp, slot.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/recurring/:id', requireAuthAndVenue, (req, res) => {
+  const slot = db.prepare(`SELECT rs.* FROM recurring_slots rs JOIN courts c ON c.id=rs.court_id WHERE rs.id=? AND c.venue_id=?`).get(req.params.id, req.venue.id);
+  if (!slot) return res.status(404).json({ error: 'Turno no encontrado' });
+  db.prepare('DELETE FROM recurring_slots WHERE id=?').run(slot.id);
+  res.json({ ok: true });
+});
+app.put('/api/admin/slots/:id', requireAuthAndVenue, (req, res) => {
+  const slot = db.prepare(`SELECT os.* FROM occupied_slots os JOIN courts c ON c.id=os.court_id WHERE os.id=? AND c.venue_id=?`).get(req.params.id, req.venue.id);
+  if (!slot) return res.status(404).json({ error: 'Turno no encontrado' });
+  const { label, person_name, person_whatsapp } = req.body;
+  db.prepare('UPDATE occupied_slots SET label=?, person_name=?, person_whatsapp=? WHERE id=?')
+    .run(label ?? slot.label, person_name ?? slot.person_name, person_whatsapp ?? slot.person_whatsapp, slot.id);
+  res.json({ ok: true });
+});
+
 app.delete('/api/admin/slots/:id', requireAuthAndVenue, (req, res) => {
   const slot = db.prepare(`SELECT os.* FROM occupied_slots os JOIN courts c ON c.id=os.court_id WHERE os.id=? AND c.venue_id=?`).get(req.params.id, req.venue.id);
   if (!slot) return res.status(404).json({ error: 'Turno no encontrado' });
   db.prepare('DELETE FROM occupied_slots WHERE id=?').run(slot.id);
+  res.json({ ok: true });
+});
+
+// ── SUPER ADMIN — OWNERS/CLUBES ───────────────────────────────
+
+app.get('/api/super/owners', requireSuper, (req, res) => {
+  const owners = db.prepare('SELECT id, email, name, is_superadmin, created_at FROM owners WHERE is_superadmin = 0 ORDER BY name').all();
+  for (const o of owners) {
+    o.venue = db.prepare('SELECT id, name, slug, city, active FROM venues WHERE owner_id = ?').get(o.id) || null;
+  }
+  res.json(owners);
+});
+
+app.post('/api/super/owners', requireSuper, (req, res) => {
+  const { username, password, name } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
+  try {
+    const r = db.prepare('INSERT INTO owners (email, password_hash, name) VALUES (?,?,?)').run(username.trim(), hashPassword(password), name || username);
+    res.json({ id: r.lastInsertRowid });
+  } catch { res.status(409).json({ error: 'Ese usuario ya existe' }); }
+});
+
+app.put('/api/super/owners/:id', requireSuper, (req, res) => {
+  const owner = db.prepare('SELECT * FROM owners WHERE id = ? AND is_superadmin = 0').get(req.params.id);
+  if (!owner) return res.status(404).json({ error: 'Usuario no encontrado' });
+  const { username, password, name } = req.body;
+  const newEmail = username ? username.trim() : owner.email;
+  const newHash  = password ? hashPassword(password) : owner.password_hash;
+  const newName  = name || owner.name;
+  try {
+    db.prepare('UPDATE owners SET email=?, password_hash=?, name=? WHERE id=?').run(newEmail, newHash, newName, owner.id);
+    res.json({ ok: true });
+  } catch { res.status(409).json({ error: 'Ese usuario ya existe' }); }
+});
+
+app.delete('/api/super/owners/:id', requireSuper, (req, res) => {
+  const owner = db.prepare('SELECT * FROM owners WHERE id = ? AND is_superadmin = 0').get(req.params.id);
+  if (!owner) return res.status(404).json({ error: 'Usuario no encontrado' });
+  db.prepare('DELETE FROM owners WHERE id = ?').run(owner.id);
   res.json({ ok: true });
 });
 
